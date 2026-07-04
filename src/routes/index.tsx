@@ -449,16 +449,22 @@ function MenuShell() {
           )}
         </main>
 
-        {/* ── Floating Cart Button ── */}
+        {/* ── Barra de Checkout Fixa (padrão delivery) ── */}
         {cart.length > 0 && !checkoutOpen && (
-          <button
-            onClick={() => setCartOpen(true)}
-            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-primary px-5 py-3.5 text-primary-foreground shadow-lg hover:shadow-xl active:scale-95 transition-all duration-200"
-          >
-            <ShoppingBag className="h-5 w-5" />
-            <span className="font-semibold text-sm">{cartItemCount}</span>
-            <span className="font-medium text-sm">{formatBRL(cartTotal)}</span>
-          </button>
+          <div className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 bg-gradient-to-t from-background via-background/95 to-transparent">
+            <button
+              onClick={() => setCartOpen(true)}
+              className="w-full flex items-center justify-between gap-3 rounded-2xl bg-primary px-5 py-4 text-primary-foreground shadow-xl active:scale-[0.98] transition-all duration-150"
+            >
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-foreground/20 font-bold text-sm">
+                  {cartItemCount}
+                </div>
+                <span className="font-semibold text-sm">Ver carrinho</span>
+              </div>
+              <span className="font-bold text-base">{formatBRL(cartTotal)}</span>
+            </button>
+          </div>
         )}
       </div>
 
