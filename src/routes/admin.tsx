@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
 import { useRestaurant } from '@/hooks/useRestaurant'
 import { supabase } from '@/lib/supabase'
-import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent } from '@blinkdotnew/ui'
+import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@blinkdotnew/ui'
 import { LogOut, Package, Pencil, Clock } from 'lucide-react'
 import { LoginForm } from '@/components/admin/LoginForm'
 import { OrdersDashboard } from '@/components/admin/OrdersDashboard'
@@ -43,6 +43,68 @@ function AdminSkeleton() {
   )
 }
 
+// Tela para criar restaurante após primeiro login
+function CreateRestaurantForm({ onCreated }: { onCreated: () => void }) {
+  const [name, setName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const { createRestaurant } = useRestaurant()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) throw new Error('Sessão inválida')
+      const result = await createRestaurant(session.user, name.trim())
+      if (result) {
+        toast.success('Restaurante criado com sucesso!')
+        onCreated()
+      } else {
+        toast.error('Erro ao criar restaurante. Tente novamente.')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao criar restaurante')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-orange-50 to-background px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-bold">
+            SE
+          </div>
+          <CardTitle className="text-xl">Criar seu Restaurante</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Dê um nome ao seu restaurante para começar
+          </p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="restaurant-name">Nome do Restaurante</Label>
+              <Input
+                id="restaurant-name"
+                placeholder="Ex: Rei do Hamburguer"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading || !name.trim()}>
+              {loading ? 'Criando...' : 'Criar Restaurante'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 function AdminContent() {
   const [session, setSession] = useState<any>(null)
   const [authChecked, setAuthChecked] = useState(false)
@@ -63,17 +125,26 @@ function AdminContent() {
   }
 
   const handleAuthSuccess = useCallback(async () => {
-    // Re-fetch restaurant after signup to pick up the newly created row.
+    const { data } = await supabase.auth.getSession()
+    if (data.session?.user) refetch(data.session.user)
+  }, [refetch])
+
+  const handleRestaurantCreated = useCallback(async () => {
     const { data } = await supabase.auth.getSession()
     if (data.session?.user) refetch(data.session.user)
   }, [refetch])
 
   if (!authChecked || restaurantLoading) return <AdminSkeleton />
-  if (!session || !restaurant) return <LoginForm onSuccess={handleAuthSuccess} />
 
+  // Não logado
+  if (!session) return <LoginForm onSuccess={handleAuthSuccess} />
+
+  // Logado mas sem restaurante → criar restaurante
+  if (!restaurant) return <CreateRestaurantForm onCreated={handleRestaurantCreated} />
+
+  // Logado e com restaurante → painel completo
   return (
     <div className="min-h-dvh bg-background">
-      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center justify-between px-4 sm:px-6 h-14 max-w-6xl mx-auto">
           <div className="flex items-center gap-3">
@@ -90,7 +161,6 @@ function AdminContent() {
         </div>
       </header>
 
-      {/* Tabs */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         <Tabs defaultValue="orders">
           <TabsList className="w-full justify-start gap-1 overflow-x-auto border-b border-border rounded-none bg-transparent p-0 h-auto">
