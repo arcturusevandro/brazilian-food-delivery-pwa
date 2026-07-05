@@ -6,16 +6,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Oculta badge "Made with Blink" ── */
-[data-blink-badge],
-[class*="blink-badge"],
-[id*="blink-badge"],
-a[href*="blink.new"][target="_blank"],
-div[style*="position: fixed"][style*="bottom"][style*="left"] {
+/* ── Remove badge Made with Blink ── */
+#blink-badge-container,
+.badge-container {
   display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
 }
 
 @layer base {
