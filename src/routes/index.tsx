@@ -18,8 +18,6 @@ function MenuPage() {
   return (
     <BlinkClientBoundary fallback={<LoadingShell />}>
       <PWARegister />
-      {/* Oculta badge "Made with Blink" */}
-      <style>{`[class*="blink-badge"], [data-blink-badge], .blink-badge { display: none !important; }`}</style>
       <MenuShell />
     </BlinkClientBoundary>
   )
@@ -43,25 +41,12 @@ function LoadingShell() {
   )
 }
 
-// ── Shell: fetches data, owns cart state, renders everything ──
-
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Button, Input, Badge } from '@blinkdotnew/ui'
 import {
-  ShoppingBag,
-  Plus,
-  Minus,
-  X,
-  Clock,
-  MapPin,
-  UtensilsCrossed,
-  ChefHat,
-  AlertCircle,
-  ArrowLeft,
+  ShoppingBag, Plus, Minus, X, Clock, MapPin, UtensilsCrossed, ChefHat, AlertCircle, ArrowLeft,
 } from 'lucide-react'
-
-// ── Types ──
 
 interface Restaurant {
   id: string
@@ -91,9 +76,19 @@ interface Product {
   available: boolean
 }
 
+interface Addon {
+  id: string
+  product_id: string
+  name: string
+  price: number
+  available: boolean
+}
+
 interface CartItem {
+  cartId: string
   product: Product
   quantity: number
+  addons: Addon[]
 }
 
 type PaymentMethod = 'cash' | 'card' | 'pix'
@@ -107,13 +102,9 @@ interface CheckoutForm {
   notes: string
 }
 
-// ── Price formatter ──
-
 function formatBRL(value: number): string {
   return `R$ ${value.toFixed(2).replace('.', ',')}`
 }
-
-// ── Food emoji placeholders ──
 
 const FOOD_EMOJIS = ['🍽️', '🍛', '🥘', '🍲', '🥗', '🍝', '🥩', '🍗', '🧆', '🌮', '🍜', '🍱', '🥟', '🍔', '🍕', '🥪', '🍳', '🧀', '🍟', '🌯']
 
@@ -125,12 +116,17 @@ function getFoodEmoji(name: string): string {
   return FOOD_EMOJIS[Math.abs(hash) % FOOD_EMOJIS.length]
 }
 
-// ── Main Component ──
+// Calcula preço de um item incluindo adicionais
+function itemUnitPrice(item: CartItem): number {
+  const addonsTotal = item.addons.reduce((sum, a) => sum + a.price, 0)
+  return item.product.price + addonsTotal
+}
 
 function MenuShell() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [addonsByProduct, setAddonsByProduct] = useState<Map<string, Addon[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -139,6 +135,9 @@ function MenuShell() {
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  // Produto selecionado para escolher adicionais
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null)
+
   useEffect(() => {
     async function fetchData() {
       try {
@@ -146,10 +145,7 @@ function MenuShell() {
         setError(null)
 
         const { data: restaurantData, error: restaurantError } = await supabase
-          .from('restaurants')
-          .select('*')
-          .limit(1)
-          .maybeSingle()
+          .from('restaurants').select('*').limit(1).maybeSingle()
 
         if (restaurantError) throw restaurantError
         if (!restaurantData) {
@@ -171,6 +167,24 @@ function MenuShell() {
 
         setCategories(catData || [])
         setProducts(prodData || [])
+
+        // Busca adicionais de todos os produtos
+        const productIds = (prodData || []).map((p) => p.id)
+        if (productIds.length > 0) {
+          const { data: addonData } = await supabase
+            .from('product_addons')
+            .select('*')
+            .in('product_id', productIds)
+            .eq('available', true)
+
+          const map = new Map<string, Addon[]>()
+          for (const addon of (addonData || [])) {
+            const list = map.get(addon.product_id) || []
+            list.push(addon)
+            map.set(addon.product_id, list)
+          }
+          setAddonsByProduct(map)
+        }
       } catch (err: any) {
         setError(err.message || 'Erro ao carregar o cardápio')
       } finally {
@@ -181,40 +195,57 @@ function MenuShell() {
     fetchData()
   }, [])
 
-  const addToCart = useCallback((product: Product) => {
+  // Adiciona produto SEM adicionais direto ao carrinho
+  const addSimpleToCart = useCallback((product: Product) => {
     setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id)
+      const existing = prev.find((item) => item.product.id === product.id && item.addons.length === 0)
       if (existing) {
         return prev.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
+          item.cartId === existing.cartId ? { ...item, quantity: item.quantity + 1 } : item
         )
       }
-      return [...prev, { product, quantity: 1 }]
+      return [...prev, { cartId: `${product.id}-${Date.now()}`, product, quantity: 1, addons: [] }]
     })
   }, [])
 
-  const removeFromCart = useCallback((productId: string) => {
+  // Adiciona produto COM adicionais escolhidos
+  const addWithAddons = useCallback((product: Product, addons: Addon[]) => {
+    setCart((prev) => [
+      ...prev,
+      { cartId: `${product.id}-${Date.now()}`, product, quantity: 1, addons },
+    ])
+  }, [])
+
+  // Ao clicar no produto: se tem adicional abre detalhe, senão vai direto
+  const handleProductClick = useCallback((product: Product) => {
+    const productAddons = addonsByProduct.get(product.id) || []
+    if (productAddons.length > 0) {
+      setDetailProduct(product)
+    } else {
+      addSimpleToCart(product)
+    }
+  }, [addonsByProduct, addSimpleToCart])
+
+  const incrementItem = useCallback((cartId: string) => {
+    setCart((prev) => prev.map((item) => item.cartId === cartId ? { ...item, quantity: item.quantity + 1 } : item))
+  }, [])
+
+  const decrementItem = useCallback((cartId: string) => {
     setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === productId)
-      if (existing && existing.quantity > 1) {
-        return prev.map((item) =>
-          item.product.id === productId
-            ? { ...item, quantity: item.quantity - 1 }
-            : item
-        )
+      const item = prev.find((i) => i.cartId === cartId)
+      if (item && item.quantity > 1) {
+        return prev.map((i) => i.cartId === cartId ? { ...i, quantity: i.quantity - 1 } : i)
       }
-      return prev.filter((item) => item.product.id !== productId)
+      return prev.filter((i) => i.cartId !== cartId)
     })
   }, [])
 
-  const removeItemCompletely = useCallback((productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId))
+  const removeItem = useCallback((cartId: string) => {
+    setCart((prev) => prev.filter((i) => i.cartId !== cartId))
   }, [])
 
   const cartTotal = useMemo(
-    () => cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0),
+    () => cart.reduce((sum, item) => sum + itemUnitPrice(item) * item.quantity, 0),
     [cart]
   )
 
@@ -238,7 +269,6 @@ function MenuShell() {
           if (anonError) throw anonError
         }
 
-        // Monta observações incluindo troco se aplicável
         let notesText = form.notes || ''
         if (form.payment_method === 'cash' && form.change_for.trim()) {
           const trocoInfo = `Troco para: R$ ${form.change_for}`
@@ -262,21 +292,27 @@ function MenuShell() {
 
         if (orderError) throw orderError
 
-        const orderItems = cart.map((item) => ({
-          order_id: orderData.id,
-          product_id: item.product.id,
-          product_name: item.product.name,
-          quantity: item.quantity,
-          unit_price: item.product.price,
-        }))
+        // Monta itens com adicionais no nome
+        const orderItems = cart.map((item) => {
+          let productName = item.product.name
+          if (item.addons.length > 0) {
+            const addonNames = item.addons.map((a) => a.name).join(', ')
+            productName = `${item.product.name} (+ ${addonNames})`
+          }
+          return {
+            order_id: orderData.id,
+            product_id: item.product.id,
+            product_name: productName,
+            quantity: item.quantity,
+            unit_price: itemUnitPrice(item),
+          }
+        })
 
         const { error: itemsError } = await supabase.from('order_items').insert(orderItems)
         if (itemsError) throw itemsError
 
         setCart([])
         setCheckoutOpen(false)
-
-        // Tela de confirmação simples
         alert('✅ Pedido realizado com sucesso!\nSeu pedido foi recebido e será preparado em breve.')
       } catch (err: any) {
         alert(`Erro ao fazer pedido: ${err.message || 'Tente novamente.'}`)
@@ -291,9 +327,7 @@ function MenuShell() {
     const map = new Map<string, Product[]>()
     for (const cat of categories) {
       const catProducts = products.filter((p) => p.category_id === cat.id)
-      if (catProducts.length > 0) {
-        map.set(cat.id, catProducts)
-      }
+      if (catProducts.length > 0) map.set(cat.id, catProducts)
     }
     return map
   }, [categories, products])
@@ -302,6 +336,11 @@ function MenuShell() {
     () => products.filter((p) => !categories.some((c) => c.id === p.category_id)),
     [products, categories]
   )
+
+  // Quantidade total de um produto no carrinho (todas variações)
+  const productQtyInCart = useCallback((productId: string) => {
+    return cart.filter((i) => i.product.id === productId).reduce((s, i) => s + i.quantity, 0)
+  }, [cart])
 
   if (loading) return <LoadingShell />
 
@@ -313,9 +352,7 @@ function MenuShell() {
           <h2 className="text-lg font-semibold text-foreground">Erro ao carregar</h2>
           <p className="mt-1 text-sm text-muted-foreground">{error}</p>
         </div>
-        <Button variant="outline" onClick={() => window.location.reload()}>
-          Tentar novamente
-        </Button>
+        <Button variant="outline" onClick={() => window.location.reload()}>Tentar novamente</Button>
       </div>
     )
   }
@@ -326,9 +363,7 @@ function MenuShell() {
         <UtensilsCrossed className="h-16 w-16 text-muted-foreground/40" />
         <div>
           <h2 className="text-xl font-semibold text-foreground">Em breve!</h2>
-          <p className="mt-2 text-sm text-muted-foreground max-w-xs">
-            Nosso cardápio está sendo preparado. Volte logo para conferir nossas delícias!
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground max-w-xs">Nosso cardápio está sendo preparado. Volte logo para conferir nossas delícias!</p>
         </div>
       </div>
     )
@@ -337,7 +372,6 @@ function MenuShell() {
   return (
     <>
       <div className="min-h-dvh bg-background pb-28">
-        {/* Header */}
         <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border">
           <div className="mx-auto max-w-3xl px-4 py-3">
             <div className="flex items-center gap-3">
@@ -367,7 +401,6 @@ function MenuShell() {
           </div>
         </header>
 
-        {/* Menu */}
         <main className="mx-auto max-w-3xl px-4 py-6">
           {categories.length === 0 && products.length === 0 ? (
             <EmptyMenu />
@@ -389,11 +422,10 @@ function MenuShell() {
                         <ProductCard
                           key={product.id}
                           product={product}
-                          cartItem={cart.find((i) => i.product.id === product.id)}
+                          quantityInCart={productQtyInCart(product.id)}
+                          hasAddons={(addonsByProduct.get(product.id) || []).length > 0}
                           restaurantOpen={restaurant.is_open}
-                          onAdd={addToCart}
-                          onRemove={removeFromCart}
-                          onAddMore={addToCart}
+                          onClick={() => handleProductClick(product)}
                         />
                       ))}
                     </div>
@@ -414,35 +446,27 @@ function MenuShell() {
                       <ProductCard
                         key={product.id}
                         product={product}
-                        cartItem={cart.find((i) => i.product.id === product.id)}
+                        quantityInCart={productQtyInCart(product.id)}
+                        hasAddons={(addonsByProduct.get(product.id) || []).length > 0}
                         restaurantOpen={restaurant.is_open}
-                        onAdd={addToCart}
-                        onRemove={removeFromCart}
-                        onAddMore={addToCart}
+                        onClick={() => handleProductClick(product)}
                       />
                     ))}
                   </div>
                 </section>
               )}
-
-              {productsByCategory.size === 0 && uncategorizedProducts.length === 0 && categories.length > 0 && (
-                <EmptyMenu />
-              )}
             </div>
           )}
         </main>
 
-        {/* Barra de checkout fixa */}
-        {cart.length > 0 && !checkoutOpen && (
+        {cart.length > 0 && !checkoutOpen && !detailProduct && (
           <div className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 bg-gradient-to-t from-background via-background/95 to-transparent">
             <button
               onClick={() => setCartOpen(true)}
               className="w-full flex items-center justify-between gap-3 rounded-2xl bg-primary px-5 py-4 text-primary-foreground shadow-xl active:scale-[0.98] transition-all duration-150"
             >
               <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-foreground/20 font-bold text-sm">
-                  {cartItemCount}
-                </div>
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-foreground/20 font-bold text-sm">{cartItemCount}</div>
                 <span className="font-semibold text-sm">Ver carrinho</span>
               </div>
               <span className="font-bold text-base">{formatBRL(cartTotal)}</span>
@@ -451,20 +475,30 @@ function MenuShell() {
         )}
       </div>
 
+      {/* Tela de detalhe do produto com adicionais */}
+      {detailProduct && (
+        <ProductDetailPanel
+          product={detailProduct}
+          addons={addonsByProduct.get(detailProduct.id) || []}
+          onClose={() => setDetailProduct(null)}
+          onConfirm={(addons) => {
+            addWithAddons(detailProduct, addons)
+            setDetailProduct(null)
+          }}
+        />
+      )}
+
       {cartOpen && (
         <CartPanel
           cart={cart}
           cartTotal={cartTotal}
           cartItemCount={cartItemCount}
           restaurantName={restaurant.name}
-          onAdd={addToCart}
-          onRemove={removeFromCart}
-          onRemoveAll={removeItemCompletely}
+          onIncrement={incrementItem}
+          onDecrement={decrementItem}
+          onRemove={removeItem}
           onClose={() => setCartOpen(false)}
-          onCheckout={() => {
-            setCartOpen(false)
-            setCheckoutOpen(true)
-          }}
+          onCheckout={() => { setCartOpen(false); setCheckoutOpen(true) }}
         />
       )}
 
@@ -477,10 +511,7 @@ function MenuShell() {
           submitting={submitting}
           onSubmit={submitOrder}
           onClose={() => setCheckoutOpen(false)}
-          onBack={() => {
-            setCheckoutOpen(false)
-            setCartOpen(true)
-          }}
+          onBack={() => { setCheckoutOpen(false); setCartOpen(true) }}
         />
       )}
     </>
@@ -490,16 +521,14 @@ function MenuShell() {
 // ── Product Card ──
 
 function ProductCard({
-  product, cartItem, restaurantOpen, onAdd, onRemove, onAddMore,
+  product, quantityInCart, hasAddons, restaurantOpen, onClick,
 }: {
   product: Product
-  cartItem: CartItem | undefined
+  quantityInCart: number
+  hasAddons: boolean
   restaurantOpen: boolean
-  onAdd: (p: Product) => void
-  onRemove: (productId: string) => void
-  onAddMore: (p: Product) => void
+  onClick: () => void
 }) {
-  const quantity = cartItem?.quantity ?? 0
   const emoji = getFoodEmoji(product.name)
 
   return (
@@ -519,31 +548,25 @@ function ProductCard({
         <div className="mt-1.5 flex items-center justify-between">
           <span className="text-sm font-bold text-primary">{formatBRL(product.price)}</span>
           {restaurantOpen ? (
-            quantity > 0 ? (
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <button onClick={() => onRemove(product.id)} className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground hover:bg-primary hover:text-primary-foreground transition-colors duration-150" aria-label="Remover um">
-                  <Minus className="h-3.5 w-3.5" />
-                </button>
-                <span className="w-6 text-center text-sm font-semibold text-foreground">{quantity}</span>
-                <button onClick={() => onAddMore(product)} className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors duration-150 active:scale-90" aria-label="Adicionar um">
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <button onClick={() => onAdd(product)} className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-150 active:scale-90" aria-label="Adicionar ao carrinho">
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            )
+            <button
+              onClick={onClick}
+              className="flex items-center gap-1 h-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-150 active:scale-90 px-2.5"
+              aria-label="Adicionar ao carrinho"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {quantityInCart > 0 && <span className="text-xs font-semibold">{quantityInCart}</span>}
+            </button>
           ) : (
             <Badge variant="destructive" className="text-xs">Indisponível</Badge>
           )}
         </div>
+        {hasAddons && restaurantOpen && (
+          <p className="mt-1 text-[10px] text-muted-foreground">Personalizável</p>
+        )}
       </div>
     </div>
   )
 }
-
-// ── Empty Menu ──
 
 function EmptyMenu() {
   return (
@@ -557,18 +580,101 @@ function EmptyMenu() {
   )
 }
 
+// ── Product Detail Panel (escolha de adicionais) ──
+
+function ProductDetailPanel({
+  product, addons, onClose, onConfirm,
+}: {
+  product: Product
+  addons: Addon[]
+  onClose: () => void
+  onConfirm: (addons: Addon[]) => void
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggleAddon = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectedAddons = addons.filter((a) => selected.has(a.id))
+  const addonsTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
+  const total = product.price + addonsTotal
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      <div className="absolute inset-0 bg-foreground/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative flex flex-col max-h-[85dvh] rounded-t-2xl bg-card shadow-2xl animate-slide-up border-t border-border">
+        <div className="flex-shrink-0 px-4 pt-3 pb-2 border-b border-border">
+          <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-muted" />
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-foreground">{product.name}</h2>
+            <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-accent transition-colors" aria-label="Fechar">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {product.photo_url && (
+            <img src={product.photo_url} alt={product.name} className="w-full h-40 object-cover rounded-lg" />
+          )}
+          {product.description && (
+            <p className="text-sm text-muted-foreground">{product.description}</p>
+          )}
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-foreground">Adicionais</h3>
+            <p className="text-xs text-muted-foreground">Escolha os extras que quiser (opcional)</p>
+            <div className="space-y-2 mt-2">
+              {addons.map((addon) => (
+                <button
+                  key={addon.id}
+                  type="button"
+                  onClick={() => toggleAddon(addon.id)}
+                  className={`w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-all duration-150 ${selected.has(addon.id) ? 'border-primary bg-primary/10' : 'border-border bg-background hover:border-primary/40'}`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${selected.has(addon.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'}`}>
+                      {selected.has(addon.id) && <Plus className="h-3 w-3 rotate-45" />}
+                    </div>
+                    <span className="text-sm font-medium text-foreground">{addon.name}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-primary">
+                    {addon.price > 0 ? `+ ${formatBRL(addon.price)}` : 'Grátis'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-shrink-0 border-t border-border px-4 py-3 bg-card rounded-b-2xl">
+          <Button onClick={() => onConfirm(selectedAddons)} className="w-full h-12 text-base font-semibold">
+            Adicionar · {formatBRL(total)}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Cart Panel ──
 
 function CartPanel({
-  cart, cartTotal, cartItemCount, restaurantName, onAdd, onRemove, onRemoveAll, onClose, onCheckout,
+  cart, cartTotal, cartItemCount, restaurantName, onIncrement, onDecrement, onRemove, onClose, onCheckout,
 }: {
   cart: CartItem[]
   cartTotal: number
   cartItemCount: number
   restaurantName: string
-  onAdd: (p: Product) => void
-  onRemove: (productId: string) => void
-  onRemoveAll: (productId: string) => void
+  onIncrement: (cartId: string) => void
+  onDecrement: (cartId: string) => void
+  onRemove: (cartId: string) => void
   onClose: () => void
   onCheckout: () => void
 }) {
@@ -591,24 +697,31 @@ function CartPanel({
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
           {cart.map((item) => (
-            <div key={item.product.id} className="flex items-center gap-3 rounded-lg border border-border bg-background p-2.5">
+            <div key={item.cartId} className="flex items-start gap-3 rounded-lg border border-border bg-background p-2.5">
               <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-accent flex items-center justify-center text-lg">
                 {getFoodEmoji(item.product.name)}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">{item.product.name}</p>
-                <p className="text-xs text-muted-foreground">{formatBRL(item.product.price)} cada</p>
+                {item.addons.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    + {item.addons.map((a) => a.name).join(', ')}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground mt-0.5">{formatBRL(itemUnitPrice(item))} cada</p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => item.quantity <= 1 ? onRemoveAll(item.product.id) : onRemove(item.product.id)} className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors" aria-label="Remover">
-                  <Minus className="h-3 w-3" />
-                </button>
-                <span className="w-5 text-center text-sm font-semibold">{item.quantity}</span>
-                <button onClick={() => onAdd(item.product)} className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors active:scale-90" aria-label="Adicionar">
-                  <Plus className="h-3 w-3" />
-                </button>
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => onDecrement(item.cartId)} className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors" aria-label="Remover">
+                    <Minus className="h-3 w-3" />
+                  </button>
+                  <span className="w-5 text-center text-sm font-semibold">{item.quantity}</span>
+                  <button onClick={() => onIncrement(item.cartId)} className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors active:scale-90" aria-label="Adicionar">
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+                <span className="text-sm font-semibold text-foreground">{formatBRL(itemUnitPrice(item) * item.quantity)}</span>
               </div>
-              <span className="text-sm font-semibold text-foreground w-16 text-right">{formatBRL(item.product.price * item.quantity)}</span>
             </div>
           ))}
         </div>
@@ -643,12 +756,7 @@ function CheckoutPanel({
   onBack: () => void
 }) {
   const [form, setForm] = useState<CheckoutForm>({
-    customer_name: '',
-    customer_phone: '',
-    address: '',
-    payment_method: 'cash',
-    change_for: '',
-    notes: '',
+    customer_name: '', customer_phone: '', address: '', payment_method: 'cash', change_for: '', notes: '',
   })
   const [errors, setErrors] = useState<Partial<Record<keyof CheckoutForm, string>>>({})
 
@@ -689,13 +797,17 @@ function CheckoutPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {/* Resumo */}
           <div className="rounded-lg border border-border bg-background p-3 space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Resumo do pedido</p>
             {cart.map((item) => (
-              <div key={item.product.id} className="flex items-center justify-between text-sm">
-                <span className="text-foreground truncate flex-1 mr-2">{item.quantity}x {item.product.name}</span>
-                <span className="text-muted-foreground flex-shrink-0">{formatBRL(item.product.price * item.quantity)}</span>
+              <div key={item.cartId} className="flex items-start justify-between text-sm gap-2">
+                <span className="text-foreground flex-1">
+                  {item.quantity}x {item.product.name}
+                  {item.addons.length > 0 && (
+                    <span className="block text-xs text-muted-foreground">+ {item.addons.map((a) => a.name).join(', ')}</span>
+                  )}
+                </span>
+                <span className="text-muted-foreground flex-shrink-0">{formatBRL(itemUnitPrice(item) * item.quantity)}</span>
               </div>
             ))}
             <div className="border-t border-border pt-1.5 flex items-center justify-between">
@@ -704,85 +816,58 @@ function CheckoutPanel({
             </div>
           </div>
 
-          {/* Nome */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Nome *</label>
             <Input value={form.customer_name} onChange={(e) => setForm((f) => ({ ...f, customer_name: e.target.value }))} placeholder="Seu nome completo" className={errors.customer_name ? 'border-destructive' : ''} />
             {errors.customer_name && <p className="text-xs text-destructive">{errors.customer_name}</p>}
           </div>
 
-          {/* Telefone */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Telefone *</label>
             <Input value={form.customer_phone} onChange={(e) => setForm((f) => ({ ...f, customer_phone: e.target.value }))} placeholder="(66) 99999-9999" type="tel" className={errors.customer_phone ? 'border-destructive' : ''} />
             {errors.customer_phone && <p className="text-xs text-destructive">{errors.customer_phone}</p>}
           </div>
 
-          {/* Endereço */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Endereço de entrega *</label>
             <Input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder="Rua, número, bairro" className={errors.address ? 'border-destructive' : ''} />
             {errors.address && <p className="text-xs text-destructive">{errors.address}</p>}
           </div>
 
-          {/* Forma de pagamento */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Forma de pagamento</label>
             <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, payment_method: 'cash', change_for: '' }))}
-                className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-all duration-150 ${form.payment_method === 'cash' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/40'}`}
-              >
-                <span className="text-xl">💵</span>
-                Dinheiro
+              <button type="button" onClick={() => setForm((f) => ({ ...f, payment_method: 'cash', change_for: '' }))}
+                className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-all duration-150 ${form.payment_method === 'cash' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/40'}`}>
+                <span className="text-xl">💵</span>Dinheiro
               </button>
-              <button
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, payment_method: 'card', change_for: '' }))}
-                className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-all duration-150 ${form.payment_method === 'card' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/40'}`}
-              >
-                <span className="text-xl">💳</span>
-                Cartão
+              <button type="button" onClick={() => setForm((f) => ({ ...f, payment_method: 'card', change_for: '' }))}
+                className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-all duration-150 ${form.payment_method === 'card' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/40'}`}>
+                <span className="text-xl">💳</span>Cartão
               </button>
-              <button
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, payment_method: 'pix', change_for: '' }))}
-                className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-all duration-150 ${form.payment_method === 'pix' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/40'}`}
-              >
-                <span className="text-xl">⚡</span>
-                Pix
+              <button type="button" onClick={() => setForm((f) => ({ ...f, payment_method: 'pix', change_for: '' }))}
+                className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-all duration-150 ${form.payment_method === 'pix' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/40'}`}>
+                <span className="text-xl">⚡</span>Pix
               </button>
             </div>
 
-            {/* Troco — aparece só quando Dinheiro selecionado */}
             {form.payment_method === 'cash' && (
               <div className="mt-2 space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Troco para quanto? <span className="text-muted-foreground font-normal">(opcional)</span></label>
-                <Input
-                  value={form.change_for}
-                  onChange={(e) => setForm((f) => ({ ...f, change_for: e.target.value }))}
-                  placeholder="Ex: 50,00"
-                  type="number"
-                  inputMode="decimal"
-                />
+                <Input value={form.change_for} onChange={(e) => setForm((f) => ({ ...f, change_for: e.target.value }))} placeholder="Ex: 50,00" type="number" inputMode="decimal" />
                 <p className="text-xs text-muted-foreground">Deixe em branco se não precisar de troco</p>
               </div>
             )}
           </div>
 
-          {/* Observações */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Observações</label>
             <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Ex: sem cebola, sem molho..." />
           </div>
 
-          {/* Info entrega */}
           <div className="rounded-lg bg-accent px-3 py-2.5 flex items-start gap-2">
             <MapPin className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-accent-foreground">
-              Entrega em aproximadamente 40-60 minutos. Pedidos feitos após as 22h serão entregues no dia seguinte.
-            </p>
+            <p className="text-xs text-accent-foreground">Entrega em aproximadamente 40-60 minutos. Pedidos feitos após as 22h serão entregues no dia seguinte.</p>
           </div>
         </div>
 
