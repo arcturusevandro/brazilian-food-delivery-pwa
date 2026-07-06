@@ -23,6 +23,14 @@ interface Product {
   available: boolean
 }
 
+interface Addon {
+  id: string
+  product_id: string
+  name: string
+  price: number
+  available: boolean
+}
+
 function formatBRL(value: number): string {
   return `R$ ${value.toFixed(2).replace('.', ',')}`
 }
@@ -37,6 +45,10 @@ export function MenuManager({ restaurantId }: { restaurantId: string }) {
   const [productDialogOpen, setProductDialogOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+
+  // Adicionais
+  const [addonDialogOpen, setAddonDialogOpen] = useState(false)
+  const [addonProduct, setAddonProduct] = useState<Product | null>(null)
 
   const fetchData = useCallback(async () => {
     const [catRes, prodRes] = await Promise.all([
@@ -182,6 +194,7 @@ export function MenuManager({ restaurantId }: { restaurantId: string }) {
                     {product.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{product.description}</p>}
                   </div>
                   <span className="text-sm font-semibold shrink-0">{formatBRL(product.price)}</span>
+                  <Button size="sm" variant="outline" className="shrink-0 text-xs" onClick={() => { setAddonProduct(product); setAddonDialogOpen(true) }}>Adicionais</Button>
                   <Switch checked={product.available} onCheckedChange={() => toggleProduct(product)} />
                   <Button size="sm" variant="ghost" onClick={() => { setEditingProduct(product); setProductDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
                   <Button size="sm" variant="ghost" onClick={() => deleteProduct(product.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
@@ -193,6 +206,7 @@ export function MenuManager({ restaurantId }: { restaurantId: string }) {
       </section>
 
       <ProductFormDialog open={productDialogOpen} onOpenChange={setProductDialogOpen} product={editingProduct} categories={categories} onSave={saveProduct} />
+      <AddonManagerDialog open={addonDialogOpen} onOpenChange={setAddonDialogOpen} product={addonProduct} />
     </div>
   )
 }
@@ -281,6 +295,106 @@ function ProductFormDialog({ open, onOpenChange, product, categories, onSave }: 
             <Button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Gerenciador de Adicionais por Produto ──
+
+function AddonManagerDialog({ open, onOpenChange, product }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  product: Product | null
+}) {
+  const [addons, setAddons] = useState<Addon[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newName, setNewName] = useState('')
+  const [newPrice, setNewPrice] = useState('')
+
+  const fetchAddons = useCallback(async () => {
+    if (!product) return
+    setLoading(true)
+    const { data, error } = await supabase.from('product_addons').select('*').eq('product_id', product.id).order('name')
+    if (!error) setAddons(data as Addon[])
+    setLoading(false)
+  }, [product])
+
+  useEffect(() => { if (open) fetchAddons() }, [open, fetchAddons])
+
+  const addAddon = async () => {
+    if (!product || !newName.trim()) return
+    const priceValue = newPrice ? parseFloat(newPrice.replace(',', '.')) : 0
+    const { error } = await supabase.from('product_addons').insert({
+      product_id: product.id,
+      name: newName.trim(),
+      price: priceValue,
+      available: true,
+    })
+    if (error) { toast.error('Erro ao adicionar'); return }
+    toast.success('Adicional criado!')
+    setNewName('')
+    setNewPrice('')
+    fetchAddons()
+  }
+
+  const deleteAddon = async (id: string) => {
+    const { error } = await supabase.from('product_addons').delete().eq('id', id)
+    if (error) { toast.error('Erro ao remover'); return }
+    toast.success('Adicional removido!')
+    fetchAddons()
+  }
+
+  const toggleAddon = async (addon: Addon) => {
+    const { error } = await supabase.from('product_addons').update({ available: !addon.available }).eq('id', addon.id)
+    if (error) { toast.error('Erro ao alterar'); return }
+    fetchAddons()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Adicionais {product ? `— ${product.name}` : ''}</DialogTitle>
+          <DialogDescription>Cadastre itens extras que o cliente pode adicionar a este produto.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Lista de adicionais */}
+          {loading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : addons.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Nenhum adicional cadastrado ainda.</p>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {addons.map(addon => (
+                <div key={addon.id} className={cn('flex items-center gap-2 p-2.5 rounded-lg border border-border', !addon.available && 'opacity-50')}>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium">{addon.name}</span>
+                  </div>
+                  <span className="text-sm font-semibold shrink-0">{addon.price > 0 ? formatBRL(addon.price) : 'Grátis'}</span>
+                  <Switch checked={addon.available} onCheckedChange={() => toggleAddon(addon)} />
+                  <Button size="sm" variant="ghost" onClick={() => deleteAddon(addon.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Formulário de novo adicional */}
+          <div className="border-t border-border pt-3 space-y-2">
+            <Label className="text-sm font-medium">Novo adicional</Label>
+            <div className="flex items-center gap-2">
+              <Input placeholder="Ex: Bacon extra" value={newName} onChange={e => setNewName(e.target.value)} className="flex-1" onKeyDown={e => e.key === 'Enter' && addAddon()} />
+              <Input placeholder="Preço" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="w-24" onKeyDown={e => e.key === 'Enter' && addAddon()} />
+              <Button size="sm" onClick={addAddon} disabled={!newName.trim()}><Plus className="h-4 w-4" /></Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Deixe o preço vazio ou 0 para adicional gratuito.</p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
