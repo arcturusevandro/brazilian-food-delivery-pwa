@@ -43,7 +43,6 @@ function AdminSkeleton() {
   )
 }
 
-// Tela para criar restaurante após primeiro login
 function CreateRestaurantForm({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -78,22 +77,13 @@ function CreateRestaurantForm({ onCreated }: { onCreated: () => void }) {
             SE
           </div>
           <CardTitle className="text-xl">Criar seu Restaurante</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Dê um nome ao seu restaurante para começar
-          </p>
+          <p className="text-sm text-muted-foreground">Dê um nome ao seu restaurante para começar</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="restaurant-name">Nome do Restaurante</Label>
-              <Input
-                id="restaurant-name"
-                placeholder="Ex: Rei do Hamburguer"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                required
-                autoFocus
-              />
+              <Input id="restaurant-name" placeholder="Ex: Rei do Hamburguer" value={name} onChange={e => setName(e.target.value)} required autoFocus />
             </div>
             <Button type="submit" className="w-full" disabled={loading || !name.trim()}>
               {loading ? 'Criando...' : 'Criar Restaurante'}
@@ -111,11 +101,24 @@ function AdminContent() {
   const { restaurant, loading: restaurantLoading, refetch } = useRestaurant()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      // Se a sessão for anônima, faz logout silencioso e mostra login
+      if (session?.user?.is_anonymous) {
+        await supabase.auth.signOut()
+        setSession(null)
+      } else {
+        setSession(session)
+      }
       setAuthChecked(true)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, s) => {
+      if (s?.user?.is_anonymous) {
+        await supabase.auth.signOut()
+        setSession(null)
+      } else {
+        setSession(s)
+      }
+    })
     return () => subscription.unsubscribe()
   }, [])
 
@@ -136,13 +139,10 @@ function AdminContent() {
 
   if (!authChecked || restaurantLoading) return <AdminSkeleton />
 
-  // Não logado
   if (!session) return <LoginForm onSuccess={handleAuthSuccess} />
 
-  // Logado mas sem restaurante → criar restaurante
   if (!restaurant) return <CreateRestaurantForm onCreated={handleRestaurantCreated} />
 
-  // Logado e com restaurante → painel completo
   return (
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
