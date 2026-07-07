@@ -803,6 +803,12 @@ function CheckoutPanel({
     if (!form.customer_name.trim()) next.customer_name = 'Nome é obrigatório'
     if (!form.customer_phone.trim()) next.customer_phone = 'Telefone é obrigatório'
     if (!form.address.trim()) next.address = 'Endereço é obrigatório'
+    if (form.payment_method === 'cash' && form.change_for.trim()) {
+      const changeFor = parseFloat(form.change_for.replace(',', '.'))
+      if (!isNaN(changeFor) && changeFor < cartTotal) {
+        next.change_for = `Troco deve ser maior que o total (${formatBRL(cartTotal)})`
+      }
+    }
     setErrors(next)
     return Object.keys(next).length === 0
   }
