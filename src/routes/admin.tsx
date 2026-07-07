@@ -4,13 +4,15 @@ import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
 import { useRestaurant } from '@/hooks/useRestaurant'
 import { supabase } from '@/lib/supabase'
 import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@blinkdotnew/ui'
-import { LogOut, Package, Pencil, Clock, Truck, Printer, Power } from 'lucide-react'
+import { LogOut, Package, Pencil, Clock, Truck, Printer, Power, Settings, BarChart2 } from 'lucide-react'
 import { LoginForm } from '@/components/admin/LoginForm'
 import { OrdersDashboard } from '@/components/admin/OrdersDashboard'
 import { MenuManager } from '@/components/admin/MenuManager'
 import { OrderHistory } from '@/components/admin/OrderHistory'
 import { DeliverySettings } from '@/components/admin/DeliverySettings'
 import { PrinterSettings } from '@/components/admin/PrinterSettings'
+import { RestaurantSettings } from '@/components/admin/RestaurantSettings'
+import { Reports } from '@/components/admin/Reports'
 import toast, { Toaster as HotToaster } from 'react-hot-toast'
 
 export const Route = createFileRoute('/admin')({
@@ -207,8 +209,14 @@ function AdminContent() {
             <TabsTrigger value="printer" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
               <Printer className="h-4 w-4" /> Impressora
             </TabsTrigger>
+            <TabsTrigger value="reports" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+              <BarChart2 className="h-4 w-4" /> Relatórios
+            </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
               <Clock className="h-4 w-4" /> Histórico
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+              <Settings className="h-4 w-4" /> Configurações
             </TabsTrigger>
           </TabsList>
 
@@ -228,8 +236,22 @@ function AdminContent() {
             <PrinterSettings />
           </TabsContent>
 
+          <TabsContent value="reports" className="mt-6">
+            <Reports restaurantId={restaurant.id} />
+          </TabsContent>
+
           <TabsContent value="history" className="mt-6">
             <OrderHistory restaurantId={restaurant.id} />
+          </TabsContent>
+
+          <TabsContent value="settings" className="mt-6">
+            <RestaurantSettings
+              restaurant={restaurant}
+              onUpdated={async () => {
+                const { data } = await supabase.auth.getSession()
+                if (data.session?.user) refetch(data.session.user)
+              }}
+            />
           </TabsContent>
         </Tabs>
       </main>
