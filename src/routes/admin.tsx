@@ -4,11 +4,12 @@ import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
 import { useRestaurant } from '@/hooks/useRestaurant'
 import { supabase } from '@/lib/supabase'
 import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@blinkdotnew/ui'
-import { LogOut, Package, Pencil, Clock } from 'lucide-react'
+import { LogOut, Package, Pencil, Clock, Truck } from 'lucide-react'
 import { LoginForm } from '@/components/admin/LoginForm'
 import { OrdersDashboard } from '@/components/admin/OrdersDashboard'
 import { MenuManager } from '@/components/admin/MenuManager'
 import { OrderHistory } from '@/components/admin/OrderHistory'
+import { DeliverySettings } from '@/components/admin/DeliverySettings'
 import toast, { Toaster as HotToaster } from 'react-hot-toast'
 
 export const Route = createFileRoute('/admin')({
@@ -102,7 +103,6 @@ function AdminContent() {
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      // Se a sessão for anônima, faz logout silencioso e mostra login
       if (session?.user?.is_anonymous) {
         await supabase.auth.signOut()
         setSession(null)
@@ -138,9 +138,7 @@ function AdminContent() {
   }, [refetch])
 
   if (!authChecked || restaurantLoading) return <AdminSkeleton />
-
   if (!session) return <LoginForm onSuccess={handleAuthSuccess} />
-
   if (!restaurant) return <CreateRestaurantForm onCreated={handleRestaurantCreated} />
 
   return (
@@ -170,6 +168,9 @@ function AdminContent() {
             <TabsTrigger value="menu" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
               <Pencil className="h-4 w-4" /> Cardápio
             </TabsTrigger>
+            <TabsTrigger value="delivery" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+              <Truck className="h-4 w-4" /> Entrega
+            </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
               <Clock className="h-4 w-4" /> Histórico
             </TabsTrigger>
@@ -181,6 +182,10 @@ function AdminContent() {
 
           <TabsContent value="menu" className="mt-6">
             <MenuManager restaurantId={restaurant.id} />
+          </TabsContent>
+
+          <TabsContent value="delivery" className="mt-6">
+            <DeliverySettings restaurantId={restaurant.id} />
           </TabsContent>
 
           <TabsContent value="history" className="mt-6">
