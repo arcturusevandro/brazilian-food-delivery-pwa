@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Button, Label, Switch, Skeleton } from '@blinkdotnew/ui'
-import { Printer, Bluetooth, Usb, CheckCircle, XCircle } from 'lucide-react'
+import { Printer, Bluetooth, Usb, Wifi, CheckCircle, XCircle } from 'lucide-react'
 import {
   connectBluetooth, connectUSB, isBluetoothConnected, isUsbConnected,
   getBluetoothDeviceName, getUsbDeviceName, PrinterConfig,
@@ -14,7 +14,7 @@ function loadConfig(): PrinterConfig {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) return JSON.parse(saved)
   } catch {}
-  return { connection: 'none', paperWidth: '80mm', autoprint: false }
+  return { connection: 'none' as const, paperWidth: '80mm' as const, autoprint: false }
 }
 
 function saveConfig(config: PrinterConfig) {
@@ -138,6 +138,31 @@ export function PrinterSettings() {
               <Usb className="h-3.5 w-3.5" />
               {connecting ? 'Conectando...' : usbConnected ? `Reconectar (${getUsbDeviceName()})` : 'Conectar impressora USB'}
             </Button>
+          )}
+        </div>
+
+        {/* WiFi / Impressora padrão */}
+        <div className={`rounded-lg border px-4 py-3 space-y-3 transition-all ${config.connection === 'wifi' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}>
+          <button
+            type="button"
+            onClick={() => update({ connection: 'wifi' })}
+            className="w-full flex items-center gap-3 text-left"
+          >
+            <div className={`h-4 w-4 rounded-full border-2 flex-shrink-0 ${config.connection === 'wifi' ? 'border-primary bg-primary' : 'border-muted-foreground/40'}`} />
+            <Wifi className="h-4 w-4 text-green-500" />
+            <div className="flex-1">
+              <p className="text-sm font-medium">WiFi / Impressora padrão</p>
+              <p className="text-xs text-muted-foreground">Usa a impressora padrão do sistema — qualquer navegador</p>
+            </div>
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          </button>
+          {config.connection === 'wifi' && (
+            <div className="rounded-md bg-accent px-3 py-2 space-y-1">
+              <p className="text-xs font-medium text-accent-foreground">Como configurar:</p>
+              <p className="text-xs text-muted-foreground">1. Configure a impressora WiFi como <strong>impressora padrão</strong> no seu PC ou celular.</p>
+              <p className="text-xs text-muted-foreground">2. Pronto — os pedidos serão enviados automaticamente para ela.</p>
+              <p className="text-xs text-muted-foreground">3. Na primeira impressão o navegador pode pedir confirmação. Marque "Sempre permitir" para não aparecer mais.</p>
+            </div>
           )}
         </div>
       </section>
