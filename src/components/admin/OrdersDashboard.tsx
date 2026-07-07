@@ -53,11 +53,9 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
-// Gera som de notificação via Web Audio API (sem arquivo externo)
 function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-
     const playBeep = (freq: number, startTime: number, duration: number, gain: number) => {
       const osc = ctx.createOscillator()
       const gainNode = ctx.createGain()
@@ -71,12 +69,10 @@ function playNotificationSound() {
       osc.start(startTime)
       osc.stop(startTime + duration + 0.05)
     }
-
     const now = ctx.currentTime
-    // Três bips ascendentes — som de notificação de delivery
-    playBeep(880, now, 0.15, 0.4)
-    playBeep(1100, now + 0.18, 0.15, 0.4)
-    playBeep(1320, now + 0.36, 0.25, 0.5)
+    playBeep(880, now, 0.15, 0.5)
+    playBeep(1100, now + 0.18, 0.15, 0.5)
+    playBeep(1320, now + 0.36, 0.25, 0.6)
   } catch (e) {
     console.log('Audio not available:', e)
   }
@@ -85,87 +81,67 @@ function playNotificationSound() {
 export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef(0)
-  const audioUnlockedRef = useRef(false)
+  const prevIdsRef = useRef<Set<string>>(new Set())
 
-  // Desbloqueia o AudioContext com primeiro toque do usuário
-  const unlockAudio = useCallback(() => {
-    if (!audioUnlockedRef.current) {
-      try {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-        ctx.resume().then(() => {
-          audioUnlockedRef.current = true
-          ctx.close()
-        })
-      } catch (e) {}
-    }
-  }, [])
+  const fetchOrders = useCallback(async (notify = false) => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*)')
+      .eq('restaurant_id', restaurantId)
+      .neq('status', 'delivered')
+      .order('created_at', { ascending: false })
 
-  useEffect(() => {
-    window.addEventListener('touchstart', unlockAudio, { once: true })
-    window.addEventListener('click', unlockAudio, { once: true })
-    return () => {
-      window.removeEventListener('touchstart', unlockAudio)
-      window.removeEventListener('click', unlockAudio)
-    }
-  }, [unlockAudio])
+    if (!error && data) {
+      const currentIds = new Set(data.map((o: any) => o.id))
+      const hasNewOrder = notify && data.some((o: any) => !prevIdsRef.current.has(o.id))
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*, items:order_items(*)')
-        .eq('restaurant_id', restaurantId)
-        .neq('status', 'delivered')
-        .order('created_at', { ascending: false })
-
-      if (!error && data) {
-        setOrders(data as Order[])
-        prevCountRef.current = data.length
+      if (hasNewOrder) {
+        playNotificationSound()
+        toast.success('Novo pedido recebido! 🎉')
+        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
       }
-      setLoading(false)
+
+      prevIdsRef.current = currentIds
+      prevCountRef.current = data.length
+      setOrders(data as Order[])
+      setLastUpdate(new Date())
     }
-    fetchOrders()
+    setLoading(false)
   }, [restaurantId])
 
+  // Carga inicial
+  useEffect(() => {
+    fetchOrders(false)
+  }, [fetchOrders])
+
+  // Polling a cada 8 segundos (backup para quando Realtime falhar)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchOrders(true)
+    }, 8000)
+    return () => clearInterval(interval)
+  }, [fetchOrders])
+
+  // Realtime (quando disponível, atualiza instantaneamente)
   useEffect(() => {
     const channel = supabase
-      .channel('orders-admin')
+      .channel('orders-admin-rt')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
-        async () => {
-          const { data } = await supabase
-            .from('orders')
-            .select('*, items:order_items(*)')
-            .eq('restaurant_id', restaurantId)
-            .neq('status', 'delivered')
-            .order('created_at', { ascending: false })
-
-          if (data) {
-            const isNewOrder = data.length > prevCountRef.current
-            prevCountRef.current = data.length
-            setOrders(data as Order[])
-            if (isNewOrder) {
-              playNotificationSound()
-              toast.success('Novo pedido recebido! 🎉')
-              scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-            }
-          }
-        }
+        () => { fetchOrders(true) }
       )
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [restaurantId])
+    return () => { supabase.removeChannel(channel) }
+  }, [restaurantId, fetchOrders])
 
   const updateStatus = async (orderId: string, currentStatus: OrderStatus) => {
     const next = STATUS_NEXT[currentStatus]
     if (!next) return
-
     const { error } = await supabase.from('orders').update({ status: next }).eq('id', orderId)
     if (error) {
       toast.error('Erro ao atualizar status')
@@ -183,75 +159,85 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
     )
   }
 
-  if (orders.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Package className="h-16 w-16 text-muted-foreground/30 mb-4" />
-        <h3 className="text-lg font-semibold">Nenhum pedido ativo</h3>
-        <p className="text-sm text-muted-foreground mt-1">Os novos pedidos aparecerão aqui em tempo real.</p>
-      </div>
-    )
-  }
-
   return (
-    <div ref={scrollRef} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {orders.map(order => (
-        <Card key={order.id} className={cn('transition-all', order.status === 'pending' && 'ring-2 ring-primary/30')}>
-          <CardHeader className="pb-2">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <CardTitle className="text-base">{order.customer_name}</CardTitle>
-                <p className="text-xs text-muted-foreground">{formatTime(order.created_at)}</p>
-              </div>
-              <Badge variant={STATUS_MAP[order.status].variant} className="gap-1 text-xs">
-                {STATUS_MAP[order.status].icon}
-                {STATUS_MAP[order.status].label}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-1 text-xs text-muted-foreground">
-              {order.customer_phone && (
-                <div className="flex items-center gap-1.5"><Phone className="h-3 w-3" /> {order.customer_phone}</div>
-              )}
-              <div className="flex items-center gap-1.5"><MapPin className="h-3 w-3" /> {order.address}</div>
-              <div className="flex items-center gap-1.5"><CreditCard className="h-3 w-3" /> {order.payment_method}</div>
-            </div>
+    <>
+      {/* Indicador de atualização */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-muted-foreground">
+          Atualizado às {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </p>
+        <Button size="sm" variant="outline" onClick={() => fetchOrders(false)} className="text-xs h-7">
+          Atualizar agora
+        </Button>
+      </div>
 
-            {order.items && order.items.length > 0 && (
-              <div className="border-t border-border pt-2">
-                <ul className="space-y-1 text-sm">
-                  {order.items.map(item => (
-                    <li key={item.id} className="flex justify-between">
-                      <span>{item.quantity}x {item.product_name}</span>
-                      <span className="text-muted-foreground">{formatBRL(item.unit_price * item.quantity)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      {orders.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Package className="h-16 w-16 text-muted-foreground/30 mb-4" />
+          <h3 className="text-lg font-semibold">Nenhum pedido ativo</h3>
+          <p className="text-sm text-muted-foreground mt-1">Os novos pedidos aparecerão aqui em tempo real.</p>
+        </div>
+      ) : (
+        <div ref={scrollRef} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {orders.map(order => (
+            <Card key={order.id} className={cn('transition-all', order.status === 'pending' && 'ring-2 ring-primary/30')}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base">{order.customer_name}</CardTitle>
+                    <p className="text-xs text-muted-foreground">{formatTime(order.created_at)}</p>
+                  </div>
+                  <Badge variant={STATUS_MAP[order.status].variant} className="gap-1 text-xs">
+                    {STATUS_MAP[order.status].icon}
+                    {STATUS_MAP[order.status].label}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  {order.customer_phone && (
+                    <div className="flex items-center gap-1.5"><Phone className="h-3 w-3" /> {order.customer_phone}</div>
+                  )}
+                  <div className="flex items-center gap-1.5"><MapPin className="h-3 w-3" /> {order.address}</div>
+                  <div className="flex items-center gap-1.5"><CreditCard className="h-3 w-3" /> {order.payment_method}</div>
+                </div>
 
-            {order.notes && (
-              <p className="text-xs text-muted-foreground italic border-t border-border pt-2">Obs: {order.notes}</p>
-            )}
+                {order.items && order.items.length > 0 && (
+                  <div className="border-t border-border pt-2">
+                    <ul className="space-y-1 text-sm">
+                      {order.items.map(item => (
+                        <li key={item.id} className="flex justify-between">
+                          <span>{item.quantity}x {item.product_name}</span>
+                          <span className="text-muted-foreground">{formatBRL(item.unit_price * item.quantity)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
-            <div className="flex items-center justify-between pt-2 border-t border-border">
-              <span className="text-lg font-bold text-primary">{formatBRL(order.total)}</span>
-              {order.status !== 'delivered' && (
-                <Button
-                  size="sm"
-                  variant={order.status === 'pending' ? 'default' : 'secondary'}
-                  onClick={() => updateStatus(order.id, order.status)}
-                >
-                  {order.status === 'pending' && 'Iniciar Preparo'}
-                  {order.status === 'preparing' && 'Sair p/ Entrega'}
-                  {order.status === 'out_for_delivery' && 'Marcar Entregue'}
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+                {order.notes && (
+                  <p className="text-xs text-muted-foreground italic border-t border-border pt-2">Obs: {order.notes}</p>
+                )}
+
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <span className="text-lg font-bold text-primary">{formatBRL(order.total)}</span>
+                  {order.status !== 'delivered' && (
+                    <Button
+                      size="sm"
+                      variant={order.status === 'pending' ? 'default' : 'secondary'}
+                      onClick={() => updateStatus(order.id, order.status)}
+                    >
+                      {order.status === 'pending' && 'Iniciar Preparo'}
+                      {order.status === 'preparing' && 'Sair p/ Entrega'}
+                      {order.status === 'out_for_delivery' && 'Marcar Entregue'}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
