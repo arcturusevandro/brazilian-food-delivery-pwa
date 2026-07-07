@@ -53,55 +53,83 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
-// Simula toque de telefone antigo usando Web Audio API
-function createPhoneRinger() {
-  let intervalId: ReturnType<typeof setInterval> | null = null
-  let ctx: AudioContext | null = null
+// ── Toque de telefone antigo ─────────────────────────────────────
+// Alterna duas frequências (padrão DRING-DRING analógico)
+let ringerCtx: AudioContext | null = null
+let ringerInterval: ReturnType<typeof setInterval> | null = null
+let ringerActive = false
 
-  function ringOnce() {
-    try {
-      if (!ctx) ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-      ctx.resume()
-
-      const playTone = (freq: number, start: number, duration: number) => {
-        const osc = ctx!.createOscillator()
-        const gain = ctx!.createGain()
-        osc.connect(gain)
-        gain.connect(ctx!.destination)
-        osc.type = 'square'
-        osc.frequency.value = freq
-        gain.gain.setValueAtTime(0.3, ctx!.currentTime + start)
-        gain.gain.setValueAtTime(0, ctx!.currentTime + start + duration)
-        osc.start(ctx!.currentTime + start)
-        osc.stop(ctx!.currentTime + start + duration + 0.05)
-      }
-
-      const t = ctx.currentTime
-      // Padrão clássico de telefone: DRING-DRING (dois bips curtos)
-      playTone(480, 0, 0.1)
-      playTone(480, 0.12, 0.1)
-      playTone(480, 0.28, 0.1)
-      playTone(480, 0.40, 0.1)
-    } catch (e) {}
+function getRingerCtx(): AudioContext {
+  if (!ringerCtx || ringerCtx.state === 'closed') {
+    ringerCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
   }
-
-  function start() {
-    ringOnce()
-    intervalId = setInterval(ringOnce, 1800)
-  }
-
-  function stop() {
-    if (intervalId) {
-      clearInterval(intervalId)
-      intervalId = null
-    }
-  }
-
-  return { start, stop }
+  return ringerCtx
 }
 
-// Instância global do ringer
-const phoneRinger = createPhoneRinger()
+function playRingCycle() {
+  try {
+    const ctx = getRingerCtx()
+    ctx.resume()
+    const now = ctx.currentTime
+
+    // DRING: alterna 440Hz e 480Hz rapidamente — som metálico de campainha
+    const makeTone = (freq: number, start: number, dur: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sawtooth'
+      osc.frequency.value = freq
+
+      // Envelope: ataque rápido, sustain, decay
+      gain.gain.setValueAtTime(0, now + start)
+      gain.gain.linearRampToValueAtTime(0.35, now + start + 0.01)
+      gain.gain.setValueAtTime(0.35, now + start + dur - 0.02)
+      gain.gain.linearRampToValueAtTime(0, now + start + dur)
+
+      osc.start(now + start)
+      osc.stop(now + start + dur + 0.02)
+    }
+
+    // Padrão: DRING (0.4s) — silêncio (0.1s) — DRING (0.4s) — pausa longa (0.8s)
+    makeTone(440, 0.00, 0.18)
+    makeTone(480, 0.02, 0.18)
+    makeTone(440, 0.20, 0.18)
+    makeTone(480, 0.22, 0.18)
+    // segundo DRING
+    makeTone(440, 0.55, 0.18)
+    makeTone(480, 0.57, 0.18)
+    makeTone(440, 0.75, 0.18)
+    makeTone(480, 0.77, 0.18)
+  } catch (e) {
+    console.log('Audio error:', e)
+  }
+}
+
+function startRinger() {
+  if (ringerActive) return
+  ringerActive = true
+  playRingCycle()
+  ringerInterval = setInterval(playRingCycle, 2200)
+}
+
+function stopRinger() {
+  ringerActive = false
+  if (ringerInterval) {
+    clearInterval(ringerInterval)
+    ringerInterval = null
+  }
+}
+
+function testRing() {
+  try {
+    const ctx = getRingerCtx()
+    ctx.resume().then(() => {
+      playRingCycle()
+    })
+  } catch (e) {}
+}
+// ────────────────────────────────────────────────────────────────
 
 export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
   const [orders, setOrders] = useState<Order[]>([])
@@ -112,22 +140,16 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevIdsRef = useRef<Set<string>>(new Set())
   const soundEnabledRef = useRef(false)
-  const isRingingRef = useRef(false)
 
-  const stopRinging = useCallback(() => {
-    if (isRingingRef.current) {
-      phoneRinger.stop()
-      isRingingRef.current = false
-      setIsRinging(false)
-    }
+  const handleStopRinging = useCallback(() => {
+    stopRinger()
+    setIsRinging(false)
   }, [])
 
-  const startRinging = useCallback(() => {
-    if (!isRingingRef.current && soundEnabledRef.current) {
-      phoneRinger.start()
-      isRingingRef.current = true
-      setIsRinging(true)
-    }
+  const handleStartRinging = useCallback(() => {
+    if (!soundEnabledRef.current) return
+    startRinger()
+    setIsRinging(true)
   }, [])
 
   const fetchOrders = useCallback(async (notify = false) => {
@@ -145,30 +167,31 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
       if (hasNewOrder) {
         toast.success('Novo pedido recebido! 🎉')
         scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-        startRinging()
+        handleStartRinging()
       }
 
-      // Para o toque se não houver mais pedidos pendentes
       const hasPending = data.some((o: any) => o.status === 'pending')
-      if (!hasPending) stopRinging()
+      if (!hasPending) {
+        stopRinger()
+        setIsRinging(false)
+      }
 
       prevIdsRef.current = currentIds
       setOrders(data as Order[])
       setLastUpdate(new Date())
     }
     setLoading(false)
-  }, [restaurantId, startRinging, stopRinging])
+  }, [restaurantId, handleStartRinging])
 
   const handleEnableSound = () => {
-    phoneRinger.start()
-    setTimeout(() => phoneRinger.stop(), 900)
+    testRing()
     soundEnabledRef.current = true
     setSoundEnabled(true)
     toast.success('Som ativado! 🔔')
   }
 
   const handleDisableSound = () => {
-    stopRinging()
+    handleStopRinging()
     soundEnabledRef.current = false
     setSoundEnabled(false)
     toast.success('Som desativado')
@@ -197,8 +220,9 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
     const next = STATUS_NEXT[currentStatus]
     if (!next) return
 
-    // Para o toque ao iniciar preparo
-    if (currentStatus === 'pending') stopRinging()
+    if (currentStatus === 'pending') {
+      handleStopRinging()
+    }
 
     const { error } = await supabase.from('orders').update({ status: next }).eq('id', orderId)
     if (error) {
@@ -206,9 +230,11 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
     } else {
       setOrders(prev => {
         const updated = prev.map(o => o.id === orderId ? { ...o, status: next } : o)
-        // Verifica se ainda há pendentes
         const hasPending = updated.some(o => o.status === 'pending')
-        if (!hasPending) stopRinging()
+        if (!hasPending) {
+          stopRinger()
+          setIsRinging(false)
+        }
         return updated
       })
       toast.success(`Status: ${STATUS_MAP[next].label}`)
@@ -238,13 +264,15 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
               <Volume2 className="h-3.5 w-3.5" />
               Ativar som
             </Button>
+          ) : isRinging ? (
+            <Button size="sm" variant="destructive" onClick={handleStopRinging} className="text-xs h-8 gap-1.5 animate-pulse">
+              <VolumeX className="h-3.5 w-3.5" />
+              Parar toque
+            </Button>
           ) : (
-            <Button size="sm" variant={isRinging ? 'destructive' : 'outline'} onClick={isRinging ? stopRinging : handleDisableSound} className="text-xs h-8 gap-1.5">
-              {isRinging ? (
-                <><VolumeX className="h-3.5 w-3.5" /> Parar toque</>
-              ) : (
-                <><Volume2 className="h-3.5 w-3.5" /> Som ativo</>
-              )}
+            <Button size="sm" variant="outline" onClick={handleDisableSound} className="text-xs h-8 gap-1.5">
+              <Volume2 className="h-3.5 w-3.5" />
+              Som ativo
             </Button>
           )}
         </div>
