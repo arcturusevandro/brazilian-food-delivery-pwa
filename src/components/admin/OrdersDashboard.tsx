@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Skeleton } from '@blinkdotnew/ui'
 import { Package, Clock, MapPin, Phone, CreditCard, ChefHat, Bike, CheckCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -53,11 +53,63 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
+// Gera som de notificação via Web Audio API (sem arquivo externo)
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+
+    const playBeep = (freq: number, startTime: number, duration: number, gain: number) => {
+      const osc = ctx.createOscillator()
+      const gainNode = ctx.createGain()
+      osc.connect(gainNode)
+      gainNode.connect(ctx.destination)
+      osc.frequency.value = freq
+      osc.type = 'sine'
+      gainNode.gain.setValueAtTime(0, startTime)
+      gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.01)
+      gainNode.gain.linearRampToValueAtTime(0, startTime + duration)
+      osc.start(startTime)
+      osc.stop(startTime + duration + 0.05)
+    }
+
+    const now = ctx.currentTime
+    // Três bips ascendentes — som de notificação de delivery
+    playBeep(880, now, 0.15, 0.4)
+    playBeep(1100, now + 0.18, 0.15, 0.4)
+    playBeep(1320, now + 0.36, 0.25, 0.5)
+  } catch (e) {
+    console.log('Audio not available:', e)
+  }
+}
+
 export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef(0)
+  const audioUnlockedRef = useRef(false)
+
+  // Desbloqueia o AudioContext com primeiro toque do usuário
+  const unlockAudio = useCallback(() => {
+    if (!audioUnlockedRef.current) {
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        ctx.resume().then(() => {
+          audioUnlockedRef.current = true
+          ctx.close()
+        })
+      } catch (e) {}
+    }
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('touchstart', unlockAudio, { once: true })
+    window.addEventListener('click', unlockAudio, { once: true })
+    return () => {
+      window.removeEventListener('touchstart', unlockAudio)
+      window.removeEventListener('click', unlockAudio)
+    }
+  }, [unlockAudio])
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -96,6 +148,7 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
             prevCountRef.current = data.length
             setOrders(data as Order[])
             if (isNewOrder) {
+              playNotificationSound()
               toast.success('Novo pedido recebido! 🎉')
               scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
             }
