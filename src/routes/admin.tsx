@@ -4,7 +4,7 @@ import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
 import { useRestaurant } from '@/hooks/useRestaurant'
 import { supabase } from '@/lib/supabase'
 import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@blinkdotnew/ui'
-import { LogOut, Package, Pencil, Clock, Truck, Printer } from 'lucide-react'
+import { LogOut, Package, Pencil, Clock, Truck, Printer, Power } from 'lucide-react'
 import { LoginForm } from '@/components/admin/LoginForm'
 import { OrdersDashboard } from '@/components/admin/OrdersDashboard'
 import { MenuManager } from '@/components/admin/MenuManager'
@@ -138,6 +138,26 @@ function AdminContent() {
     if (data.session?.user) refetch(data.session.user)
   }, [refetch])
 
+  const [toggling, setToggling] = useState(false)
+
+  const handleToggleOpen = async () => {
+    if (!restaurant) return
+    setToggling(true)
+    try {
+      const { error } = await supabase
+        .from('restaurants')
+        .update({ is_open: !restaurant.is_open })
+        .eq('id', restaurant.id)
+      if (error) throw error
+      toast.success(restaurant.is_open ? 'Restaurante fechado!' : 'Restaurante aberto!')
+      refetch((await supabase.auth.getSession()).data.session!.user)
+    } catch (err: any) {
+      toast.error('Erro ao alterar status')
+    } finally {
+      setToggling(false)
+    }
+  }
+
   if (!authChecked || restaurantLoading) return <AdminSkeleton />
   if (!session) return <LoginForm onSuccess={handleAuthSuccess} />
   if (!restaurant) return <CreateRestaurantForm onCreated={handleRestaurantCreated} />
@@ -153,10 +173,22 @@ function AdminContent() {
               <p className="text-xs text-muted-foreground">Painel Administrativo</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Sair</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={restaurant.is_open ? 'outline' : 'default'}
+              size="sm"
+              onClick={handleToggleOpen}
+              disabled={toggling}
+              className={`gap-1.5 text-xs ${restaurant.is_open ? 'border-green-500 text-green-600 hover:bg-green-50' : 'bg-destructive hover:bg-destructive/90'}`}
+            >
+              <Power className="h-3.5 w-3.5" />
+              {toggling ? '...' : restaurant.is_open ? 'Aberto' : 'Fechado'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
+          </div>
         </div>
       </header>
 
