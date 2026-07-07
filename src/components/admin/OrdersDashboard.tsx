@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Skeleton } from '@blinkdotnew/ui'
-import { Package, Clock, MapPin, Phone, CreditCard, ChefHat, Bike, CheckCircle } from 'lucide-react'
+import { Package, Clock, MapPin, Phone, CreditCard, ChefHat, Bike, CheckCircle, Volume2, VolumeX } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -56,23 +56,25 @@ function formatTime(iso: string): string {
 function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const playBeep = (freq: number, startTime: number, duration: number, gain: number) => {
-      const osc = ctx.createOscillator()
-      const gainNode = ctx.createGain()
-      osc.connect(gainNode)
-      gainNode.connect(ctx.destination)
-      osc.frequency.value = freq
-      osc.type = 'sine'
-      gainNode.gain.setValueAtTime(0, startTime)
-      gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.01)
-      gainNode.gain.linearRampToValueAtTime(0, startTime + duration)
-      osc.start(startTime)
-      osc.stop(startTime + duration + 0.05)
-    }
-    const now = ctx.currentTime
-    playBeep(880, now, 0.15, 0.5)
-    playBeep(1100, now + 0.18, 0.15, 0.5)
-    playBeep(1320, now + 0.36, 0.25, 0.6)
+    ctx.resume().then(() => {
+      const playBeep = (freq: number, startTime: number, duration: number, gain: number) => {
+        const osc = ctx.createOscillator()
+        const gainNode = ctx.createGain()
+        osc.connect(gainNode)
+        gainNode.connect(ctx.destination)
+        osc.frequency.value = freq
+        osc.type = 'sine'
+        gainNode.gain.setValueAtTime(0, startTime)
+        gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.01)
+        gainNode.gain.linearRampToValueAtTime(0, startTime + duration)
+        osc.start(startTime)
+        osc.stop(startTime + duration + 0.05)
+      }
+      const now = ctx.currentTime
+      playBeep(880, now, 0.15, 0.5)
+      playBeep(1100, now + 0.18, 0.15, 0.5)
+      playBeep(1320, now + 0.36, 0.25, 0.6)
+    })
   } catch (e) {
     console.log('Audio not available:', e)
   }
@@ -82,9 +84,10 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [soundEnabled, setSoundEnabled] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const prevCountRef = useRef(0)
   const prevIdsRef = useRef<Set<string>>(new Set())
+  const soundEnabledRef = useRef(false)
 
   const fetchOrders = useCallback(async (notify = false) => {
     const { data, error } = await supabase
@@ -99,25 +102,36 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
       const hasNewOrder = notify && data.some((o: any) => !prevIdsRef.current.has(o.id))
 
       if (hasNewOrder) {
-        playNotificationSound()
+        if (soundEnabledRef.current) playNotificationSound()
         toast.success('Novo pedido recebido! 🎉')
         scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
       }
 
       prevIdsRef.current = currentIds
-      prevCountRef.current = data.length
       setOrders(data as Order[])
       setLastUpdate(new Date())
     }
     setLoading(false)
   }, [restaurantId])
 
-  // Carga inicial
+  const handleEnableSound = () => {
+    // Toca um bip imediatamente para desbloquear o áudio
+    playNotificationSound()
+    soundEnabledRef.current = true
+    setSoundEnabled(true)
+    toast.success('Som ativado! 🔔')
+  }
+
+  const handleDisableSound = () => {
+    soundEnabledRef.current = false
+    setSoundEnabled(false)
+    toast.success('Som desativado')
+  }
+
   useEffect(() => {
     fetchOrders(false)
   }, [fetchOrders])
 
-  // Polling a cada 8 segundos (backup para quando Realtime falhar)
   useEffect(() => {
     const interval = setInterval(() => {
       fetchOrders(true)
@@ -125,7 +139,6 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
     return () => clearInterval(interval)
   }, [fetchOrders])
 
-  // Realtime (quando disponível, atualiza instantaneamente)
   useEffect(() => {
     const channel = supabase
       .channel('orders-admin-rt')
@@ -161,14 +174,42 @@ export function OrdersDashboard({ restaurantId }: { restaurantId: string }) {
 
   return (
     <>
-      {/* Indicador de atualização */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Barra de controle */}
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <p className="text-xs text-muted-foreground">
           Atualizado às {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </p>
-        <Button size="sm" variant="outline" onClick={() => fetchOrders(false)} className="text-xs h-7">
-          Atualizar agora
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => fetchOrders(false)}
+            className="text-xs h-8"
+          >
+            Atualizar
+          </Button>
+          {!soundEnabled ? (
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleEnableSound}
+              className="text-xs h-8 gap-1.5"
+            >
+              <Volume2 className="h-3.5 w-3.5" />
+              Ativar som
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDisableSound}
+              className="text-xs h-8 gap-1.5"
+            >
+              <VolumeX className="h-3.5 w-3.5" />
+              Som ativo
+            </Button>
+          )}
+        </div>
       </div>
 
       {orders.length === 0 ? (
