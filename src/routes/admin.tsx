@@ -13,6 +13,8 @@ import { DeliverySettings } from '@/components/admin/DeliverySettings'
 import { PrinterSettings } from '@/components/admin/PrinterSettings'
 import { RestaurantSettings } from '@/components/admin/RestaurantSettings'
 import { Reports } from '@/components/admin/Reports'
+import { BusinessHours } from '@/components/admin/BusinessHours'
+import { useBusinessHours, toggleRestaurantManual, enableRestaurant } from '@/lib/useBusinessHours'
 import toast, { Toaster as HotToaster } from 'react-hot-toast'
 
 export const Route = createFileRoute('/admin')({
@@ -146,12 +148,15 @@ function AdminContent() {
     if (!restaurant) return
     setToggling(true)
     try {
-      const { error } = await supabase
-        .from('restaurants')
-        .update({ is_open: !restaurant.is_open })
-        .eq('id', restaurant.id)
-      if (error) throw error
-      toast.success(restaurant.is_open ? 'Restaurante fechado!' : 'Restaurante aberto!')
+      if (!restaurant.is_open) {
+        // Abre manualmente — reseta override para voltar ao automático
+        await enableRestaurant(restaurant.id)
+        toast.success('Restaurante aberto! Horário automático ativado.')
+      } else {
+        // Fecha manualmente — ativa override
+        await toggleRestaurantManual(restaurant.id, restaurant.is_open)
+        toast.success('Restaurante fechado manualmente.')
+      }
       refetch((await supabase.auth.getSession()).data.session!.user)
     } catch (err: any) {
       toast.error('Erro ao alterar status')
@@ -159,6 +164,12 @@ function AdminContent() {
       setToggling(false)
     }
   }
+
+  // Hook de horário automático
+  useBusinessHours(restaurant, async () => {
+    const { data } = await supabase.auth.getSession()
+    if (data.session?.user) refetch(data.session.user)
+  })
 
   if (!authChecked || restaurantLoading) return <AdminSkeleton />
   if (!session) return <LoginForm onSuccess={handleAuthSuccess} />
@@ -206,6 +217,9 @@ function AdminContent() {
             <TabsTrigger value="delivery" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
               <Truck className="h-4 w-4" /> Entrega
             </TabsTrigger>
+            <TabsTrigger value="hours" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+              <Clock className="h-4 w-4" /> Horários
+            </TabsTrigger>
             <TabsTrigger value="printer" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
               <Printer className="h-4 w-4" /> Impressora
             </TabsTrigger>
@@ -230,6 +244,10 @@ function AdminContent() {
 
           <TabsContent value="delivery" className="mt-6">
             <DeliverySettings restaurantId={restaurant.id} />
+          </TabsContent>
+
+          <TabsContent value="hours" className="mt-6">
+            <BusinessHours restaurantId={restaurant.id} />
           </TabsContent>
 
           <TabsContent value="printer" className="mt-6">
