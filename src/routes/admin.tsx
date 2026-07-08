@@ -18,12 +18,6 @@ import { useBusinessHours, toggleRestaurantManual, enableRestaurant } from '@/li
 import toast, { Toaster as HotToaster } from 'react-hot-toast'
 
 export const Route = createFileRoute('/admin')({
-  head: () => ({
-    meta: [
-      { title: 'Admin · Sabor Express' },
-      { name: 'description', content: 'Painel administrativo do Sabor Express' },
-    ],
-  }),
   component: AdminPage,
 })
 
@@ -164,6 +158,13 @@ function AdminContent() {
       setToggling(false)
     }
   }
+
+  // Título dinâmico
+  useEffect(() => {
+    if (restaurant) {
+      document.title = `Admin · ${restaurant.name}`
+    }
+  }, [restaurant])
 
   // Hook de horário automático
   useBusinessHours(restaurant, async () => {
