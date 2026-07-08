@@ -2,13 +2,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
 
 export const Route = createFileRoute('/')({
-  head: () => ({
-    meta: [
-      { title: 'Sabor Express — Cardápio' },
-      { name: 'description', content: 'Peça sua comida brasileira favorita. Cardápio online com delivery rápido.' },
-      { name: 'theme-color', content: '#F97316' },
-    ],
-  }),
   component: MenuPage,
 })
 
@@ -74,6 +67,24 @@ function MenuShell() {
   const [submitting, setSubmitting] = useState(false)
   const [detailProduct, setDetailProduct] = useState<Product | null>(null)
   const [orderConfirmed, setOrderConfirmed] = useState<{ id: string; total: number; deliveryFee: number } | null>(null)
+
+  // Atualiza título e meta dinamicamente com nome do restaurante
+  useEffect(() => {
+    if (!restaurant) return
+    const title = `${restaurant.name} — Cardápio Online`
+    document.title = title
+    // Meta description
+    let desc = document.querySelector('meta[name="description"]')
+    if (!desc) { desc = document.createElement('meta'); desc.setAttribute('name', 'description'); document.head.appendChild(desc) }
+    desc.setAttribute('content', `Peça agora no ${restaurant.name}! Cardápio online com entrega rápida.`)
+    // OG title
+    let og = document.querySelector('meta[property="og:title"]')
+    if (!og) { og = document.createElement('meta'); og.setAttribute('property', 'og:title'); document.head.appendChild(og) }
+    og.setAttribute('content', restaurant.name)
+    // Theme color
+    let theme = document.querySelector('meta[name="theme-color"]')
+    if (theme) theme.setAttribute('content', '#D4A017')
+  }, [restaurant])
 
   useEffect(() => {
     async function fetchData() {
