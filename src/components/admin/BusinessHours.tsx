@@ -1,13 +1,22 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { Button, Switch, Skeleton } from '@blinkdotnew/ui'
+import { Plus, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import toast from 'react-hot-toast'
 
-interface Restaurant {
-  id: string
-  is_open: boolean
-  manual_override: boolean
-}
+const DAYS = [
+  { value: 0, label: 'Domingo' },
+  { value: 1, label: 'Segunda-feira' },
+  { value: 2, label: 'Terça-feira' },
+  { value: 3, label: 'Quarta-feira' },
+  { value: 4, label: 'Quinta-feira' },
+  { value: 5, label: 'Sexta-feira' },
+  { value: 6, label: 'Sábado' },
+]
 
 interface BusinessHour {
+  id?: string
+  restaurant_id: string
   day_of_week: number
   open_time: string
   close_time: string
@@ -16,97 +25,186 @@ interface BusinessHour {
   is_active: boolean
 }
 
-function timeToMinutes(time: string): number {
-  const [h, m] = time.split(':').map(Number)
-  return h * 60 + m
+function TimeInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <input
+      type="time"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="h-8 w-28 rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+    />
+  )
 }
 
-function isInShift(current: number, open: string, close: string): boolean {
-  const openMin = timeToMinutes(open)
-  let closeMin = timeToMinutes(close)
-  // Suporte a horários que passam da meia-noite
-  if (closeMin <= openMin) closeMin += 24 * 60
-  return current >= openMin && current < closeMin
-}
+export function BusinessHours({ restaurantId }: { restaurantId: string }) {
+  const [hours, setHours] = useState<BusinessHour[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
-function isCurrentlyOpen(hours: BusinessHour[]): boolean {
-  const now = new Date()
-  const dayOfWeek = now.getDay()
-  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const fetchHours = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('business_hours')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .order('day_of_week')
 
-  const todayHours = hours.find(h => h.day_of_week === dayOfWeek && h.is_active)
-  if (!todayHours) return false
+    if (!error) {
+      const map = new Map((data || []).map((h: any) => [h.day_of_week, h]))
+      const full = DAYS.map(d => map.get(d.value) || {
+        restaurant_id: restaurantId,
+        day_of_week: d.value,
+        open_time: '18:00',
+        close_time: '23:00',
+        open_time_2: null,
+        close_time_2: null,
+        is_active: d.value >= 1 && d.value <= 6,
+      })
+      setHours(full as BusinessHour[])
+    }
+    setLoading(false)
+  }, [restaurantId])
 
-  // Verifica 1º turno
-  const inFirstShift = isInShift(currentMinutes, todayHours.open_time, todayHours.close_time)
-  if (inFirstShift) return true
+  useEffect(() => { fetchHours() }, [fetchHours])
 
-  // Verifica 2º turno se existir
-  if (todayHours.open_time_2 && todayHours.close_time_2) {
-    const inSecondShift = isInShift(currentMinutes, todayHours.open_time_2, todayHours.close_time_2)
-    if (inSecondShift) return true
+  const update = (day: number, field: keyof BusinessHour, value: any) => {
+    setHours(prev => prev.map(h => h.day_of_week === day ? { ...h, [field]: value } : h))
   }
 
-  return false
-}
+  const addSecondShift = (day: number) => {
+    setHours(prev => prev.map(h => h.day_of_week === day
+      ? { ...h, open_time_2: '13:00', close_time_2: '18:00' }
+      : h
+    ))
+  }
 
-export function useBusinessHours(restaurant: Restaurant | null, onStatusChange: () => void) {
-  const hoursRef = useRef<BusinessHour[]>([])
-  const lastStatusRef = useRef<boolean | null>(null)
+  const removeSecondShift = (day: number) => {
+    setHours(prev => prev.map(h => h.day_of_week === day
+      ? { ...h, open_time_2: null, close_time_2: null }
+      : h
+    ))
+  }
 
-  const fetchAndCheck = useCallback(async () => {
-    if (!restaurant) return
-    if (restaurant.manual_override) return
-
-    if (hoursRef.current.length === 0) {
-      const { data } = await supabase
-        .from('business_hours')
-        .select('*')
-        .eq('restaurant_id', restaurant.id)
-      if (data) hoursRef.current = data as BusinessHour[]
+  const saveAll = async () => {
+    // Valida horários
+    for (const h of hours) {
+      if (!h.is_active) continue
+      if (!h.open_time || !h.close_time) {
+        toast.error(`Preencha o horário de ${DAYS.find(d => d.value === h.day_of_week)?.label}`)
+        return
+      }
+      if (h.open_time_2 && !h.close_time_2) {
+        toast.error(`Preencha o horário do 2º turno de ${DAYS.find(d => d.value === h.day_of_week)?.label}`)
+        return
+      }
     }
 
-    if (hoursRef.current.length === 0) return
-
-    const shouldBeOpen = isCurrentlyOpen(hoursRef.current)
-    if (lastStatusRef.current === shouldBeOpen) return
-    lastStatusRef.current = shouldBeOpen
-
-    if (shouldBeOpen !== restaurant.is_open) {
+    setSaving(true)
+    try {
       const { error } = await supabase
-        .from('restaurants')
-        .update({ is_open: shouldBeOpen })
-        .eq('id', restaurant.id)
-      if (!error) onStatusChange()
+        .from('business_hours')
+        .upsert(
+          hours.map(h => ({ ...h, restaurant_id: restaurantId })),
+          { onConflict: 'restaurant_id,day_of_week' }
+        )
+      if (error) throw error
+      toast.success('Horários salvos!')
+      fetchHours()
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao salvar')
+    } finally {
+      setSaving(false)
     }
-  }, [restaurant, onStatusChange])
+  }
 
-  useEffect(() => {
-    hoursRef.current = []
-    lastStatusRef.current = null
-  }, [restaurant?.id])
+  if (loading) return (
+    <div className="space-y-3">
+      {[1,2,3,4,5,6,7].map(i => <Skeleton key={i} className="h-16 rounded-lg" />)}
+    </div>
+  )
 
-  useEffect(() => {
-    fetchAndCheck()
-    const interval = setInterval(fetchAndCheck, 60_000)
-    return () => clearInterval(interval)
-  }, [fetchAndCheck])
-}
+  return (
+    <div className="space-y-6 max-w-xl">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold">Horário de funcionamento</h2>
+        <p className="text-sm text-muted-foreground">
+          Configure até 2 turnos por dia. O cardápio abre e fecha automaticamente.
+        </p>
+      </div>
 
-export async function toggleRestaurantManual(restaurantId: string, currentIsOpen: boolean): Promise<boolean> {
-  const newIsOpen = !currentIsOpen
-  const { error } = await supabase
-    .from('restaurants')
-    .update({ is_open: newIsOpen, manual_override: true })
-    .eq('id', restaurantId)
-  if (error) throw error
-  return newIsOpen
-}
+      <div className="space-y-3">
+        {DAYS.map(day => {
+          const h = hours.find(x => x.day_of_week === day.value)
+          if (!h) return null
+          const hasSecondShift = h.open_time_2 !== null
 
-export async function enableRestaurant(restaurantId: string): Promise<void> {
-  const { error } = await supabase
-    .from('restaurants')
-    .update({ is_open: true, manual_override: false })
-    .eq('id', restaurantId)
-  if (error) throw error
+          return (
+            <div key={day.value} className={`rounded-lg border px-3 py-3 space-y-2.5 transition-all ${h.is_active ? 'border-border bg-background' : 'border-border/40 bg-muted/20'}`}>
+              {/* Cabeçalho do dia */}
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={h.is_active}
+                  onCheckedChange={v => update(day.value, 'is_active', v)}
+                />
+                <span className={`text-sm font-semibold w-32 shrink-0 ${!h.is_active ? 'text-muted-foreground' : 'text-foreground'}`}>
+                  {day.label}
+                </span>
+                {!h.is_active && <span className="text-xs text-muted-foreground">Fechado</span>}
+              </div>
+
+              {h.is_active && (
+                <div className="pl-9 space-y-2">
+                  {/* 1º Turno */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-muted-foreground w-14 shrink-0">1º turno</span>
+                    <TimeInput value={h.open_time} onChange={v => update(day.value, 'open_time', v)} />
+                    <span className="text-xs text-muted-foreground">às</span>
+                    <TimeInput value={h.close_time} onChange={v => update(day.value, 'close_time', v)} />
+                  </div>
+
+                  {/* 2º Turno */}
+                  {hasSecondShift ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-muted-foreground w-14 shrink-0">2º turno</span>
+                      <TimeInput value={h.open_time_2 || ''} onChange={v => update(day.value, 'open_time_2', v)} />
+                      <span className="text-xs text-muted-foreground">às</span>
+                      <TimeInput value={h.close_time_2 || ''} onChange={v => update(day.value, 'close_time_2', v)} />
+                      <button
+                        onClick={() => removeSecondShift(day.value)}
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                        title="Remover 2º turno"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => addSecondShift(day.value)}
+                      className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Adicionar 2º turno
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <Button onClick={saveAll} disabled={saving} className="w-full sm:w-auto">
+        {saving ? 'Salvando...' : 'Salvar horários'}
+      </Button>
+
+      <div className="rounded-lg bg-accent px-4 py-3 space-y-1">
+        <p className="text-xs font-medium text-accent-foreground">Como funciona</p>
+        <p className="text-xs text-muted-foreground">
+          O sistema verifica os horários a cada minuto e abre/fecha automaticamente.
+          Use 2 turnos para intervalos de almoço ou pausa entre períodos.
+          O botão no painel sempre tem prioridade sobre o horário automático.
+        </p>
+      </div>
+    </div>
+  )
 }
