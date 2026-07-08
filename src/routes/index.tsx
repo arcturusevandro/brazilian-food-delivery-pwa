@@ -136,6 +136,7 @@ function MenuShell() {
 
   const submitOrder = useCallback(async (form: CheckoutForm, deliveryFee: number) => {
     if (!restaurant || cart.length === 0) return
+    if (!restaurant.is_open) { alert('O restaurante está fechado no momento. Tente novamente mais tarde.'); return }
     setSubmitting(true)
     try {
       const total = cartSubtotal + deliveryFee
@@ -215,6 +216,15 @@ function MenuShell() {
           </div>
         </header>
 
+        {/* Banner restaurante fechado */}
+        {!restaurant.is_open && (
+          <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-3 text-center">
+            <p className="text-sm font-medium text-destructive">
+              🔴 Estamos fechados no momento — aceitaremos pedidos em breve!
+            </p>
+          </div>
+        )}
+
         {/* Menu */}
         <main className="mx-auto max-w-3xl px-4 py-6">
           {categories.length === 0 && products.length === 0 ? (
@@ -254,7 +264,7 @@ function MenuShell() {
         </main>
 
         {/* Barra de checkout */}
-        {cart.length > 0 && !checkoutOpen && !detailProduct && !orderConfirmed && (
+        {cart.length > 0 && !checkoutOpen && !detailProduct && !orderConfirmed && restaurant.is_open && (
           <div className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 bg-gradient-to-t from-background via-background/95 to-transparent">
             <button onClick={() => setCartOpen(true)} className="w-full flex items-center justify-between gap-3 rounded-2xl bg-primary px-5 py-4 text-primary-foreground shadow-xl active:scale-[0.98] transition-all duration-150">
               <div className="flex items-center gap-2">
@@ -315,7 +325,7 @@ function MenuShell() {
 // ── Product Card ─────────────────────────────────────────────────
 function ProductCard({ product, qty, hasAddons, open, onClick }: { product: Product; qty: number; hasAddons: boolean; open: boolean; onClick: () => void }) {
   return (
-    <div className="flex gap-3 rounded-xl border border-border bg-card p-3 shadow-sm hover:shadow-md transition-all">
+    <div className={`flex gap-3 rounded-xl border border-border bg-card p-3 shadow-sm transition-all ${open ? "hover:shadow-md" : "opacity-70"}`}>
       <div className="flex-shrink-0 h-20 w-20 rounded-lg bg-accent flex items-center justify-center overflow-hidden">
         {product.photo_url ? <img src={product.photo_url} alt={product.name} className="h-full w-full object-cover" loading="lazy" /> : <span className="text-3xl">{getFoodEmoji(product.name)}</span>}
       </div>
