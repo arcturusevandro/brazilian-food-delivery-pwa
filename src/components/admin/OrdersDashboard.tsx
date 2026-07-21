@@ -117,6 +117,9 @@ const PAYMENT_LABEL: Record<string, string> = {
 const SOUND_STORAGE_PREFIX =
   'orders_sound_enabled'
 
+const RINGTONE_PATH =
+  '/audio/new-order-ring.mp3'
+
 function getSoundStorageKey(
   restaurantId: string,
 ): string {
@@ -147,8 +150,7 @@ function saveSoundPreference(
       enabled ? 'true' : 'false',
     )
   } catch {
-    // Ignora erro quando o armazenamento
-    // do navegador não estiver disponível.
+    // Ignora erros de armazenamento.
   }
 }
 
@@ -172,142 +174,127 @@ function formatDateTime(iso: string): string {
 }
 
 // ─────────────────────────────────────────────
-// Toque de telefone antigo
+// Campainha em MP3
 // ─────────────────────────────────────────────
 
-let ringerCtx: AudioContext | null = null
-
-let ringerInterval:
-  | ReturnType<typeof setInterval>
-  | null = null
+let ringerAudio: HTMLAudioElement | null =
+  null
 
 let ringerActive = false
 
-function getRingerCtx(): AudioContext {
-  if (
-    !ringerCtx ||
-    ringerCtx.state === 'closed'
-  ) {
-    ringerCtx = new (
-      window.AudioContext ||
-      (window as any).webkitAudioContext
-    )()
+let testTimeout:
+  | ReturnType<typeof setTimeout>
+  | null = null
+
+function getRingerAudio(): HTMLAudioElement {
+  if (!ringerAudio) {
+    ringerAudio = new Audio(
+      RINGTONE_PATH,
+    )
+
+    ringerAudio.preload = 'auto'
+    ringerAudio.loop = true
+    ringerAudio.volume = 1
   }
 
-  return ringerCtx
+  return ringerAudio
 }
 
-function playRingCycle() {
-  try {
-    const ctx = getRingerCtx()
-
-    void ctx.resume()
-
-    const now = ctx.currentTime
-
-    const makeTone = (
-      frequency: number,
-      start: number,
-      duration: number,
-    ) => {
-      const oscillator =
-        ctx.createOscillator()
-
-      const gain = ctx.createGain()
-
-      oscillator.connect(gain)
-      gain.connect(ctx.destination)
-
-      oscillator.type = 'sawtooth'
-      oscillator.frequency.value = frequency
-
-      gain.gain.setValueAtTime(
-        0,
-        now + start,
-      )
-
-      gain.gain.linearRampToValueAtTime(
-        0.35,
-        now + start + 0.01,
-      )
-
-      gain.gain.setValueAtTime(
-        0.35,
-        now + start + duration - 0.02,
-      )
-
-      gain.gain.linearRampToValueAtTime(
-        0,
-        now + start + duration,
-      )
-
-      oscillator.start(now + start)
-
-      oscillator.stop(
-        now + start + duration + 0.02,
-      )
-    }
-
-    makeTone(440, 0, 0.18)
-    makeTone(480, 0.02, 0.18)
-
-    makeTone(440, 0.2, 0.18)
-    makeTone(480, 0.22, 0.18)
-
-    makeTone(440, 0.55, 0.18)
-    makeTone(480, 0.57, 0.18)
-
-    makeTone(440, 0.75, 0.18)
-    makeTone(480, 0.77, 0.18)
-  } catch {
-    // Evita quebrar o painel caso o navegador
-    // bloqueie temporariamente o áudio.
-  }
-}
-
-function startRinger() {
+async function startRinger() {
   if (ringerActive) {
     return
   }
 
-  ringerActive = true
+  try {
+    const audio = getRingerAudio()
 
-  playRingCycle()
+    if (testTimeout) {
+      clearTimeout(testTimeout)
+      testTimeout = null
+    }
 
-  ringerInterval = setInterval(
-    playRingCycle,
-    2200,
-  )
+    ringerActive = true
+    audio.loop = true
+    audio.volume = 1
+    audio.currentTime = 0
+
+    await audio.play()
+  } catch {
+    ringerActive = false
+  }
 }
 
 function stopRinger() {
   ringerActive = false
 
-  if (ringerInterval) {
-    clearInterval(ringerInterval)
-    ringerInterval = null
+  if (testTimeout) {
+    clearTimeout(testTimeout)
+    testTimeout = null
+  }
+
+  if (!ringerAudio) {
+    return
+  }
+
+  ringerAudio.pause()
+  ringerAudio.currentTime = 0
+  ringerAudio.loop = true
+  ringerAudio.volume = 1
+}
+
+async function testRing() {
+  try {
+    const audio = getRingerAudio()
+
+    if (testTimeout) {
+      clearTimeout(testTimeout)
+    }
+
+    audio.pause()
+    audio.currentTime = 0
+    audio.loop = false
+    audio.volume = 1
+
+    await audio.play()
+
+    testTimeout = setTimeout(() => {
+      audio.pause()
+      audio.currentTime = 0
+      audio.loop = true
+      audio.volume = 1
+      testTimeout = null
+    }, 3000)
+  } catch {
+    // O navegador pode exigir interação.
   }
 }
 
-function unlockAudio() {
+async function unlockAudio() {
   try {
-    const context = getRingerCtx()
+    if (ringerActive) {
+      return
+    }
 
-    void context.resume()
+    const audio = getRingerAudio()
+
+    const previousVolume =
+      audio.volume
+
+    const previousLoop =
+      audio.loop
+
+    audio.volume = 0
+    audio.loop = false
+    audio.currentTime = 0
+
+    await audio.play()
+
+    audio.pause()
+    audio.currentTime = 0
+    audio.volume = previousVolume
+    audio.loop = previousLoop
   } catch {
-    // Ignora navegadores sem suporte.
-  }
-}
-
-function testRing() {
-  try {
-    const context = getRingerCtx()
-
-    void context.resume().then(() => {
-      playRingCycle()
-    })
-  } catch {
-    // Ignora navegadores sem suporte.
+    // Ignora bloqueio temporário.
   }
 }
 
@@ -318,7 +305,9 @@ function testRing() {
 function loadPrinterConfig(): PrinterConfig {
   try {
     const saved =
-      localStorage.getItem('printer_config')
+      localStorage.getItem(
+        'printer_config',
+      )
 
     if (saved) {
       return JSON.parse(saved)
@@ -369,8 +358,6 @@ export function OrdersDashboard({
       loadPrinterConfig(),
     )
 
-  // Recupera a preferência de som sempre que
-  // o restaurante atual mudar.
   useEffect(() => {
     const enabled =
       loadSoundPreference(restaurantId)
@@ -384,16 +371,20 @@ export function OrdersDashboard({
     }
   }, [restaurantId])
 
-  // Quando o som estiver ativo, qualquer toque
-  // ou clique no painel desbloqueia o áudio do
-  // navegador automaticamente.
   useEffect(() => {
     if (!soundEnabled) {
       return
     }
 
+    let unlocked = false
+
     const handleInteraction = () => {
-      unlockAudio()
+      if (unlocked) {
+        return
+      }
+
+      unlocked = true
+      void unlockAudio()
     }
 
     window.addEventListener(
@@ -419,8 +410,6 @@ export function OrdersDashboard({
     }
   }, [soundEnabled])
 
-  // Atualiza a configuração da impressora
-  // quando o localStorage mudar.
   useEffect(() => {
     const handler = () => {
       printerConfigRef.current =
@@ -440,7 +429,6 @@ export function OrdersDashboard({
     }
   }, [])
 
-  // Encerra o toque ao sair da tela.
   useEffect(() => {
     return () => {
       stopRinger()
@@ -459,8 +447,11 @@ export function OrdersDashboard({
         return
       }
 
-      startRinger()
-      setIsRinging(true)
+      void startRinger().then(() => {
+        if (ringerActive) {
+          setIsRinging(true)
+        }
+      })
     }, [])
 
   const handlePrintOrder =
@@ -499,7 +490,8 @@ export function OrdersDashboard({
               ).map((item) => ({
                 product_name:
                   item.product_name,
-                quantity: item.quantity,
+                quantity:
+                  item.quantity,
                 unit_price:
                   item.unit_price,
               })),
@@ -540,7 +532,8 @@ export function OrdersDashboard({
       if (!error && data) {
         const currentIds = new Set(
           data.map(
-            (order: any) => order.id,
+            (order: any) =>
+              order.id,
           ),
         )
 
@@ -577,7 +570,9 @@ export function OrdersDashboard({
               'none' &&
             config.autoprint
           ) {
-            for (const order of newOrders) {
+            for (
+              const order of newOrders
+            ) {
               await handlePrintOrder(
                 order as Order,
               )
@@ -585,10 +580,12 @@ export function OrdersDashboard({
           }
         }
 
-        const hasPending = data.some(
-          (order: any) =>
-            order.status === 'pending',
-        )
+        const hasPending =
+          data.some(
+            (order: any) =>
+              order.status ===
+              'pending',
+          )
 
         if (!hasPending) {
           stopRinger()
@@ -620,10 +617,10 @@ export function OrdersDashboard({
     soundEnabledRef.current = true
     setSoundEnabled(true)
 
-    testRing()
+    void testRing()
 
     toast.success(
-      'Som ativado permanentemente! 🔔',
+      'Som ativado! 🔔',
     )
   }
 
@@ -648,9 +645,12 @@ export function OrdersDashboard({
   }, [fetchOrders])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchOrders(true)
-    }, 8000)
+    const interval = setInterval(
+      () => {
+        fetchOrders(true)
+      },
+      8000,
+    )
 
     return () => {
       clearInterval(interval)
@@ -693,26 +693,30 @@ export function OrdersDashboard({
       return
     }
 
-    if (currentStatus === 'pending') {
+    if (
+      currentStatus === 'pending'
+    ) {
       handleStopRinging()
 
       const config =
         printerConfigRef.current
 
       if (
-        config.connection !== 'none' &&
+        config.connection !==
+          'none' &&
         !config.autoprint
       ) {
         await handlePrintOrder(order)
       }
     }
 
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        status: next,
-      })
-      .eq('id', order.id)
+    const { error } =
+      await supabase
+        .from('orders')
+        .update({
+          status: next,
+        })
+        .eq('id', order.id)
 
     if (error) {
       toast.error(
@@ -723,21 +727,24 @@ export function OrdersDashboard({
     }
 
     setOrders((previous) => {
-      const updated = previous.map(
-        (currentOrder) =>
-          currentOrder.id === order.id
-            ? {
-                ...currentOrder,
-                status: next,
-              }
-            : currentOrder,
-      )
+      const updated =
+        previous.map(
+          (currentOrder) =>
+            currentOrder.id ===
+            order.id
+              ? {
+                  ...currentOrder,
+                  status: next,
+                }
+              : currentOrder,
+        )
 
-      const hasPending = updated.some(
-        (currentOrder) =>
-          currentOrder.status ===
-          'pending',
-      )
+      const hasPending =
+        updated.some(
+          (currentOrder) =>
+            currentOrder.status ===
+            'pending',
+        )
 
       if (!hasPending) {
         stopRinger()
@@ -755,12 +762,14 @@ export function OrdersDashboard({
   if (loading) {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        {[1, 2, 3].map((item) => (
-          <Skeleton
-            key={item}
-            className="h-48 rounded-lg"
-          />
-        ))}
+        {[1, 2, 3].map(
+          (item) => (
+            <Skeleton
+              key={item}
+              className="h-48 rounded-lg"
+            />
+          ),
+        )}
       </div>
     )
   }
@@ -799,7 +808,9 @@ export function OrdersDashboard({
             <Button
               size="sm"
               variant="default"
-              onClick={handleEnableSound}
+              onClick={
+                handleEnableSound
+              }
               className="h-8 gap-1.5 text-xs"
             >
               <Volume2 className="h-3.5 w-3.5" />
@@ -911,7 +922,6 @@ export function OrdersDashboard({
                     {order.customer_phone && (
                       <div className="flex items-center gap-1.5">
                         <Phone className="h-3 w-3" />
-
                         {
                           order.customer_phone
                         }
@@ -991,7 +1001,9 @@ export function OrdersDashboard({
 
                   <div className="space-y-1 border-t border-border pt-2">
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Subtotal</span>
+                      <span>
+                        Subtotal
+                      </span>
 
                       <span>
                         {formatBRL(
@@ -1001,7 +1013,9 @@ export function OrdersDashboard({
                     </div>
 
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Entrega</span>
+                      <span>
+                        Entrega
+                      </span>
 
                       <span>
                         {(order.delivery_fee ||
