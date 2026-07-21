@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Input, Label, Skeleton, Switch } from '@blinkdotnew/ui'
-import { Plus, Save, Trash2, Truck } from 'lucide-react'
+import {
+  Button,
+  Input,
+  Label,
+  Skeleton,
+  Switch,
+} from '@blinkdotnew/ui'
+import {
+  Plus,
+  Save,
+  Trash2,
+  Truck,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 
@@ -28,11 +39,21 @@ function formatBRL(value: number): string {
 }
 
 function parseMoney(value: string): number {
-  const parsed = Number.parseFloat(
-    value.trim().replace('R$', '').replace(',', '.'),
-  )
+  const normalized = value
+    .trim()
+    .replace('R$', '')
+    .replace(/\s/g, '')
+    .replace(',', '.')
+
+  const parsed = Number.parseFloat(normalized)
 
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function moneyInputValue(value: number): string {
+  return Number(value || 0)
+    .toFixed(2)
+    .replace('.', ',')
 }
 
 export function DeliverySettings({
@@ -48,20 +69,26 @@ export function DeliverySettings({
   const [zones, setZones] =
     useState<DeliveryZone[]>([])
 
+  const [zoneFees, setZoneFees] =
+    useState<Record<string, string>>({})
+
   const [loading, setLoading] =
     useState(true)
 
   const [savingSettings, setSavingSettings] =
     useState(false)
 
-  const [savingFee, setSavingFee] =
-    useState(false)
+  const [savingZoneId, setSavingZoneId] =
+    useState<string | null>(null)
 
   const [newNeighborhood, setNewNeighborhood] =
     useState('')
 
-  const [unifiedFee, setUnifiedFee] =
+  const [newFee, setNewFee] =
     useState('5,00')
+
+  const [addingZone, setAddingZone] =
+    useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -101,18 +128,18 @@ export function DeliverySettings({
 
       setZones(loadedZones)
 
-      const currentFee =
-        loadedZones.length > 0
-          ? Number(loadedZones[0].fee) || 0
-          : Number(settingsResult.data?.fixed_fee) || 0
+      const loadedFees: Record<string, string> = {}
 
-      setUnifiedFee(
-        currentFee.toFixed(2).replace('.', ','),
-      )
+      loadedZones.forEach((zone) => {
+        loadedFees[zone.id] =
+          moneyInputValue(Number(zone.fee))
+      })
+
+      setZoneFees(loadedFees)
     } catch (error: any) {
       toast.error(
         error.message ||
-          'Erro ao carregar as configurações.',
+          'Erro ao carregar as configurações de entrega.',
       )
     } finally {
       setLoading(false)
@@ -144,7 +171,9 @@ export function DeliverySettings({
         throw error
       }
 
-      toast.success('Configurações salvas!')
+      toast.success(
+        'Configurações de entrega salvas!',
+      )
 
       await fetchData()
     } catch (error: any) {
@@ -157,8 +186,11 @@ export function DeliverySettings({
     }
   }
 
-  async function saveUnifiedDeliveryFee() {
-    const fee = parseMoney(unifiedFee)
+  async function saveZoneFee(zone: DeliveryZone) {
+    const feeText =
+      zoneFees[zone.id] ?? '0,00'
+
+    const fee = parseMoney(feeText)
 
     if (fee < 0) {
       toast.error(
@@ -167,76 +199,46 @@ export function DeliverySettings({
       return
     }
 
-    if (zones.length === 0) {
-      toast.error(
-        'Nenhum bairro está cadastrado.',
-      )
-      return
-    }
-
-    setSavingFee(true)
+    setSavingZoneId(zone.id)
 
     try {
-      const { error: zonesError } =
-        await supabase
-          .from('delivery_zones')
-          .update({ fee })
-          .eq('restaurant_id', restaurantId)
+      const { error } = await supabase
+        .from('delivery_zones')
+        .update({
+          fee,
+        })
+        .eq('id', zone.id)
+        .eq('restaurant_id', restaurantId)
 
-      if (zonesError) {
-        throw zonesError
+      if (error) {
+        throw error
       }
 
-      const { error: settingsError } =
-        await supabase
-          .from('delivery_settings')
-          .upsert(
-            {
-              ...settings,
-              restaurant_id: restaurantId,
-              type: 'by_neighborhood',
-              fixed_fee: fee,
-              updated_at: new Date().toISOString(),
-            },
-            {
-              onConflict: 'restaurant_id',
-            },
-          )
-
-      if (settingsError) {
-        throw settingsError
-      }
-
-      setSettings((current) => ({
+      setZoneFees((current) => ({
         ...current,
-        type: 'by_neighborhood',
-        fixed_fee: fee,
+        [zone.id]: moneyInputValue(fee),
       }))
 
-      setUnifiedFee(
-        fee.toFixed(2).replace('.', ','),
-      )
-
       toast.success(
-        `Taxa de ${formatBRL(
-          fee,
-        )} aplicada a todos os bairros!`,
+        `Taxa de ${zone.neighborhood} atualizada para ${formatBRL(fee)}!`,
       )
 
       await fetchData()
     } catch (error: any) {
       toast.error(
         error.message ||
-          'Erro ao atualizar a taxa.',
+          'Erro ao atualizar a taxa do bairro.',
       )
     } finally {
-      setSavingFee(false)
+      setSavingZoneId(null)
     }
   }
 
   async function addZone() {
     const neighborhood =
       newNeighborhood.trim()
+
+    const fee = parseMoney(newFee)
 
     if (!neighborhood) {
       toast.error(
@@ -245,14 +247,23 @@ export function DeliverySettings({
       return
     }
 
+    if (fee < 0) {
+      toast.error(
+        'A taxa não pode ser negativa.',
+      )
+      return
+    }
+
     const alreadyExists =
-      zones.some(
-        (zone) =>
+      zones.some((zone) => {
+        return (
           zone.neighborhood
             .trim()
             .toLocaleLowerCase('pt-BR') ===
-          neighborhood.toLocaleLowerCase('pt-BR'),
-      )
+          neighborhood
+            .toLocaleLowerCase('pt-BR')
+        )
+      })
 
     if (alreadyExists) {
       toast.error(
@@ -261,13 +272,15 @@ export function DeliverySettings({
       return
     }
 
+    setAddingZone(true)
+
     try {
       const { error } = await supabase
         .from('delivery_zones')
         .insert({
           restaurant_id: restaurantId,
           neighborhood,
-          fee: parseMoney(unifiedFee),
+          fee,
           available: true,
         })
 
@@ -276,8 +289,11 @@ export function DeliverySettings({
       }
 
       setNewNeighborhood('')
+      setNewFee('5,00')
 
-      toast.success('Bairro adicionado!')
+      toast.success(
+        'Bairro adicionado!',
+      )
 
       await fetchData()
     } catch (error: any) {
@@ -285,21 +301,36 @@ export function DeliverySettings({
         error.message ||
           'Erro ao adicionar o bairro.',
       )
+    } finally {
+      setAddingZone(false)
     }
   }
 
-  async function deleteZone(id: string) {
+  async function deleteZone(
+    zone: DeliveryZone,
+  ) {
+    const confirmed = window.confirm(
+      `Deseja remover o bairro "${zone.neighborhood}"?`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
     try {
       const { error } = await supabase
         .from('delivery_zones')
         .delete()
-        .eq('id', id)
+        .eq('id', zone.id)
+        .eq('restaurant_id', restaurantId)
 
       if (error) {
         throw error
       }
 
-      toast.success('Bairro removido!')
+      toast.success(
+        'Bairro removido!',
+      )
 
       await fetchData()
     } catch (error: any) {
@@ -320,16 +351,23 @@ export function DeliverySettings({
           available: !zone.available,
         })
         .eq('id', zone.id)
+        .eq('restaurant_id', restaurantId)
 
       if (error) {
         throw error
       }
 
+      toast.success(
+        !zone.available
+          ? `${zone.neighborhood} ativado!`
+          : `${zone.neighborhood} desativado!`,
+      )
+
       await fetchData()
     } catch (error: any) {
       toast.error(
         error.message ||
-          'Erro ao alterar o bairro.',
+          'Erro ao alterar a disponibilidade.',
       )
     }
   }
@@ -343,11 +381,8 @@ export function DeliverySettings({
     )
   }
 
-  const currentFee =
-    parseMoney(unifiedFee)
-
   return (
-    <div className="max-w-lg space-y-8">
+    <div className="max-w-2xl space-y-8">
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">
           Tipo de entrega
@@ -371,7 +406,7 @@ export function DeliverySettings({
               value: 'by_neighborhood',
               label: '📍 Por bairro',
               description:
-                'Lista de bairros atendidos com taxa única',
+                'Defina um valor diferente para cada bairro',
             },
           ].map((option) => {
             const selected =
@@ -381,16 +416,14 @@ export function DeliverySettings({
               <button
                 key={option.value}
                 type="button"
-                onClick={() =>
-                  setSettings(
-                    (current) => ({
-                      ...current,
-                      type:
-                        option.value as
-                          DeliverySettingsData['type'],
-                    }),
-                  )
-                }
+                onClick={() => {
+                  setSettings((current) => ({
+                    ...current,
+                    type:
+                      option.value as
+                        DeliverySettingsData['type'],
+                  }))
+                }}
                 className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-all ${
                   selected
                     ? 'border-primary bg-primary/10'
@@ -438,16 +471,16 @@ export function DeliverySettings({
               min="0"
               step="0.01"
               placeholder="0,00"
-              value={settings.fixed_fee || ''}
-              onChange={(event) =>
-                setSettings(
-                  (current) => ({
-                    ...current,
-                    fixed_fee:
-                      Number(event.target.value) || 0,
-                  }),
-                )
+              value={
+                settings.fixed_fee || ''
               }
+              onChange={(event) => {
+                setSettings((current) => ({
+                  ...current,
+                  fixed_fee:
+                    Number(event.target.value) || 0,
+                }))
+              }}
             />
           </div>
         </section>
@@ -456,109 +489,44 @@ export function DeliverySettings({
       {settings.type ===
         'by_neighborhood' && (
         <section className="space-y-5">
-          <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
-            <div>
-              <h2 className="text-lg font-semibold">
-                Taxa única de entrega
-              </h2>
+          <div>
+            <h2 className="text-lg font-semibold">
+              Bairros e taxas
+            </h2>
 
-              <p className="mt-1 text-xs text-muted-foreground">
-                Este valor será aplicado a todos os
-                bairros cadastrados.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <div className="relative flex-1">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                  R$
-                </span>
-
-                <Input
-                  className="pl-9"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="5,00"
-                  value={unifiedFee}
-                  onChange={(event) =>
-                    setUnifiedFee(
-                      event.target.value,
-                    )
-                  }
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === 'Enter'
-                    ) {
-                      saveUnifiedDeliveryFee()
-                    }
-                  }}
-                />
-              </div>
-
-              <Button
-                onClick={
-                  saveUnifiedDeliveryFee
-                }
-                disabled={savingFee}
-              >
-                <Save className="mr-2 h-4 w-4" />
-
-                {savingFee
-                  ? 'Aplicando...'
-                  : 'Aplicar taxa'}
-              </Button>
-            </div>
-
-            <div className="rounded-md bg-background/70 px-3 py-2">
-              <p className="text-xs text-muted-foreground">
-                Taxa atual
-              </p>
-
-              <p className="text-lg font-bold">
-                {formatBRL(currentFee)}
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Altere o valor e pressione
+              Salvar no bairro desejado.
+            </p>
           </div>
 
-          <div className="space-y-3">
-            <div>
-              <h2 className="text-lg font-semibold">
-                Bairros atendidos
-              </h2>
+          {zones.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-8 text-center">
+              <Truck className="mb-2 h-8 w-8 text-muted-foreground/30" />
 
-              <p className="text-xs text-muted-foreground">
-                {zones.length}{' '}
-                {zones.length === 1
-                  ? 'bairro cadastrado'
-                  : 'bairros cadastrados'}
+              <p className="text-sm text-muted-foreground">
+                Nenhum bairro cadastrado
               </p>
             </div>
-
-            {zones.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-8 text-center">
-                <Truck className="mb-2 h-8 w-8 text-muted-foreground/30" />
-
-                <p className="text-sm text-muted-foreground">
-                  Nenhum bairro cadastrado
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {zones.map((zone) => (
-                  <div
-                    key={zone.id}
-                    className={`flex items-center gap-3 rounded-lg border border-border p-3 ${
-                      zone.available
-                        ? ''
-                        : 'opacity-50'
-                    }`}
-                  >
+          ) : (
+            <div className="space-y-3">
+              {zones.map((zone) => (
+                <div
+                  key={zone.id}
+                  className={`rounded-lg border border-border p-3 ${
+                    zone.available
+                      ? ''
+                      : 'opacity-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-semibold">
                         {zone.neighborhood}
                       </p>
 
                       <p className="text-xs text-muted-foreground">
+                        Taxa cadastrada:{' '}
                         {Number(zone.fee) > 0
                           ? formatBRL(
                               Number(zone.fee),
@@ -569,66 +537,138 @@ export function DeliverySettings({
 
                     <Switch
                       checked={zone.available}
-                      onCheckedChange={() =>
+                      onCheckedChange={() => {
                         toggleZone(zone)
-                      }
+                      }}
                     />
 
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() =>
-                        deleteZone(zone.id)
-                      }
+                      onClick={() => {
+                        deleteZone(zone)
+                      }}
                       aria-label={`Remover ${zone.neighborhood}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
 
-          <div className="space-y-2 border-t border-border pt-3">
+                  <div className="mt-3 flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        R$
+                      </span>
+
+                      <Input
+                        className="pl-9"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        value={
+                          zoneFees[zone.id] ??
+                          moneyInputValue(
+                            Number(zone.fee),
+                          )
+                        }
+                        onChange={(event) => {
+                          const value =
+                            event.target.value
+
+                          setZoneFees(
+                            (current) => ({
+                              ...current,
+                              [zone.id]: value,
+                            }),
+                          )
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === 'Enter'
+                          ) {
+                            saveZoneFee(zone)
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        saveZoneFee(zone)
+                      }}
+                      disabled={
+                        savingZoneId === zone.id
+                      }
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+
+                      {savingZoneId === zone.id
+                        ? 'Salvando...'
+                        : 'Salvar'}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="space-y-3 border-t border-border pt-4">
             <Label className="text-sm font-medium">
               Adicionar bairro
             </Label>
 
+            <Input
+              placeholder="Nome do bairro"
+              value={newNeighborhood}
+              onChange={(event) => {
+                setNewNeighborhood(
+                  event.target.value,
+                )
+              }}
+            />
+
             <div className="flex gap-2">
-              <Input
-                className="flex-1"
-                placeholder="Nome do bairro"
-                value={newNeighborhood}
-                onChange={(event) =>
-                  setNewNeighborhood(
-                    event.target.value,
-                  )
-                }
-                onKeyDown={(event) => {
-                  if (
-                    event.key === 'Enter'
-                  ) {
-                    addZone()
-                  }
-                }}
-              />
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                  R$
+                </span>
+
+                <Input
+                  className="pl-9"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="5,00"
+                  value={newFee}
+                  onChange={(event) => {
+                    setNewFee(
+                      event.target.value,
+                    )
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === 'Enter'
+                    ) {
+                      addZone()
+                    }
+                  }}
+                />
+              </div>
 
               <Button
-                size="sm"
                 onClick={addZone}
                 disabled={
+                  addingZone ||
                   !newNeighborhood.trim()
                 }
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="mr-2 h-4 w-4" />
+
+                {addingZone
+                  ? 'Adicionando...'
+                  : 'Adicionar'}
               </Button>
             </div>
-
-            <p className="text-xs text-muted-foreground">
-              O novo bairro receberá a taxa atual de{' '}
-              {formatBRL(currentFee)}.
-            </p>
           </div>
         </section>
       )}
