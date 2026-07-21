@@ -35,16 +35,14 @@ function formatBRL(value: number): string {
 }
 
 function parseMoney(value: string): number {
-  const normalizedValue = value
+  const normalized = value
     .replace(/\s/g, '')
     .replace('R$', '')
     .replace(',', '.')
 
-  const parsedValue = Number.parseFloat(normalizedValue)
+  const parsed = Number.parseFloat(normalized)
 
-  return Number.isFinite(parsedValue)
-    ? parsedValue
-    : 0
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 export function DeliverySettings({
@@ -115,10 +113,6 @@ export function DeliverySettings({
 
       setZones(loadedZones)
 
-      /*
-       * Como a entrega utiliza taxa única,
-       * o primeiro bairro define o valor exibido.
-       */
       if (loadedZones.length > 0) {
         const currentFee =
           Number(loadedZones[0].fee) || 0
@@ -202,4 +196,199 @@ export function DeliverySettings({
 
       if (zones.length === 0) {
         toast.error(
-          'Nenhum bairro foi
+          'Nenhum bairro foi cadastrado.',
+        )
+        return
+      }
+
+      setSavingUnifiedFee(true)
+
+      try {
+        const { error: zonesError } =
+          await supabase
+            .from('delivery_zones')
+            .update({
+              fee,
+            })
+            .eq(
+              'restaurant_id',
+              restaurantId,
+            )
+
+        if (zonesError) {
+          throw zonesError
+        }
+
+        const { error: settingsError } =
+          await supabase
+            .from('delivery_settings')
+            .upsert(
+              {
+                ...settings,
+                restaurant_id:
+                  restaurantId,
+                type: 'by_neighborhood',
+                fixed_fee: fee,
+                updated_at:
+                  new Date().toISOString(),
+              },
+              {
+                onConflict:
+                  'restaurant_id',
+              },
+            )
+
+        if (settingsError) {
+          throw settingsError
+        }
+
+        setSettings((current) => ({
+          ...current,
+          type: 'by_neighborhood',
+          fixed_fee: fee,
+        }))
+
+        setUnifiedFee(
+          fee
+            .toFixed(2)
+            .replace('.', ','),
+        )
+
+        toast.success(
+          `Taxa de ${formatBRL(
+            fee,
+          )} aplicada a todos os bairros!`,
+        )
+
+        await fetchData()
+      } catch (error: any) {
+        toast.error(
+          error.message ||
+            'Erro ao atualizar a taxa de entrega',
+        )
+      } finally {
+        setSavingUnifiedFee(false)
+      }
+    }
+
+  const addZone = async () => {
+    const neighborhood =
+      newNeighborhood.trim()
+
+    if (!neighborhood) {
+      toast.error(
+        'Digite o nome do bairro.',
+      )
+      return
+    }
+
+    const duplicatedZone =
+      zones.some(
+        (zone) =>
+          zone.neighborhood
+            .trim()
+            .toLocaleLowerCase('pt-BR') ===
+          neighborhood
+            .toLocaleLowerCase('pt-BR'),
+      )
+
+    if (duplicatedZone) {
+      toast.error(
+        'Este bairro já está cadastrado.',
+      )
+      return
+    }
+
+    const fee = parseMoney(unifiedFee)
+
+    if (fee < 0) {
+      toast.error(
+        'A taxa não pode ser negativa.',
+      )
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('delivery_zones')
+        .insert({
+          restaurant_id: restaurantId,
+          neighborhood,
+          fee,
+          available: true,
+        })
+
+      if (error) {
+        throw error
+      }
+
+      toast.success(
+        'Bairro adicionado!',
+      )
+
+      setNewNeighborhood('')
+
+      await fetchData()
+    } catch (error: any) {
+      toast.error(
+        error.message ||
+          'Erro ao adicionar bairro',
+      )
+    }
+  }
+
+  const deleteZone = async (
+    id: string,
+  ) => {
+    try {
+      const { error } = await supabase
+        .from('delivery_zones')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        throw error
+      }
+
+      toast.success(
+        'Bairro removido!',
+      )
+
+      await fetchData()
+    } catch (error: any) {
+      toast.error(
+        error.message ||
+          'Erro ao remover bairro',
+      )
+    }
+  }
+
+  const toggleZone = async (
+    zone: DeliveryZone,
+  ) => {
+    try {
+      const { error } = await supabase
+        .from('delivery_zones')
+        .update({
+          available:
+            !zone.available,
+        })
+        .eq('id', zone.id)
+
+      if (error) {
+        throw error
+      }
+
+      await fetchData()
+    } catch (error: any) {
+      toast.error(
+        error.message ||
+          'Erro ao alterar disponibilidade',
+      )
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton
