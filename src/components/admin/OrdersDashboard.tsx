@@ -1,4 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from 'react'
 import {
   Button,
   Card,
@@ -79,22 +84,30 @@ const STATUS_MAP: Record<
   pending: {
     label: 'Pendente',
     variant: 'destructive',
-    icon: <Clock className="h-3.5 w-3.5" />,
+    icon: (
+      <Clock className="h-3.5 w-3.5" />
+    ),
   },
   preparing: {
     label: 'Preparando',
     variant: 'secondary',
-    icon: <ChefHat className="h-3.5 w-3.5" />,
+    icon: (
+      <ChefHat className="h-3.5 w-3.5" />
+    ),
   },
   out_for_delivery: {
     label: 'Saiu p/ Entrega',
     variant: 'outline',
-    icon: <Bike className="h-3.5 w-3.5" />,
+    icon: (
+      <Bike className="h-3.5 w-3.5" />
+    ),
   },
   delivered: {
     label: 'Entregue',
     variant: 'default',
-    icon: <CheckCircle className="h-3.5 w-3.5" />,
+    icon: (
+      <CheckCircle className="h-3.5 w-3.5" />
+    ),
   },
 }
 
@@ -150,17 +163,21 @@ function saveSoundPreference(
       enabled ? 'true' : 'false',
     )
   } catch {
-    // Ignora erros de armazenamento.
+    // Ignora erro do armazenamento.
   }
 }
 
-function formatBRL(value: number): string {
+function formatBRL(
+  value: number,
+): string {
   return `R$ ${value
     .toFixed(2)
     .replace('.', ',')}`
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(
+  iso: string,
+): string {
   return new Date(iso).toLocaleString(
     'pt-BR',
     {
@@ -173,12 +190,11 @@ function formatDateTime(iso: string): string {
   )
 }
 
-// ─────────────────────────────────────────────
-// Campainha em MP3
-// ─────────────────────────────────────────────
+// Campainha MP3
 
-let ringerAudio: HTMLAudioElement | null =
-  null
+let ringerAudio:
+  | HTMLAudioElement
+  | null = null
 
 let ringerActive = false
 
@@ -186,7 +202,8 @@ let testTimeout:
   | ReturnType<typeof setTimeout>
   | null = null
 
-function getRingerAudio(): HTMLAudioElement {
+function getRingerAudio():
+  HTMLAudioElement {
   if (!ringerAudio) {
     ringerAudio = new Audio(
       RINGTONE_PATH,
@@ -213,10 +230,12 @@ async function startRinger() {
       testTimeout = null
     }
 
-    ringerActive = true
+    audio.pause()
+    audio.currentTime = 0
     audio.loop = true
     audio.volume = 1
-    audio.currentTime = 0
+
+    ringerActive = true
 
     await audio.play()
   } catch {
@@ -239,7 +258,6 @@ function stopRinger() {
   ringerAudio.pause()
   ringerAudio.currentTime = 0
   ringerAudio.loop = true
-  ringerAudio.volume = 1
 }
 
 async function testRing() {
@@ -261,11 +279,10 @@ async function testRing() {
       audio.pause()
       audio.currentTime = 0
       audio.loop = true
-      audio.volume = 1
       testTimeout = null
     }, 3000)
   } catch {
-    // O navegador pode exigir interação.
+    // O navegador pode bloquear o áudio.
   }
 }
 
@@ -276,12 +293,8 @@ async function unlockAudio() {
     }
 
     const audio = getRingerAudio()
-
-    const previousVolume =
-      audio.volume
-
-    const previousLoop =
-      audio.loop
+    const oldVolume = audio.volume
+    const oldLoop = audio.loop
 
     audio.volume = 0
     audio.loop = false
@@ -291,18 +304,15 @@ async function unlockAudio() {
 
     audio.pause()
     audio.currentTime = 0
-    audio.volume = previousVolume
-    audio.loop = previousLoop
+    audio.volume = oldVolume
+    audio.loop = oldLoop
   } catch {
     // Ignora bloqueio temporário.
   }
 }
 
-// ─────────────────────────────────────────────
-// Impressora
-// ─────────────────────────────────────────────
-
-function loadPrinterConfig(): PrinterConfig {
+function loadPrinterConfig():
+  PrinterConfig {
   try {
     const saved =
       localStorage.getItem(
@@ -313,7 +323,7 @@ function loadPrinterConfig(): PrinterConfig {
       return JSON.parse(saved)
     }
   } catch {
-    // Usa configuração padrão.
+    // Usa padrão.
   }
 
   return {
@@ -338,8 +348,10 @@ export function OrdersDashboard({
   const [lastUpdate, setLastUpdate] =
     useState<Date>(new Date())
 
-  const [soundEnabled, setSoundEnabled] =
-    useState(initialSoundEnabled)
+  const [
+    soundEnabled,
+    setSoundEnabled,
+  ] = useState(initialSoundEnabled)
 
   const [isRinging, setIsRinging] =
     useState(false)
@@ -364,11 +376,6 @@ export function OrdersDashboard({
 
     soundEnabledRef.current = enabled
     setSoundEnabled(enabled)
-
-    if (!enabled) {
-      stopRinger()
-      setIsRinging(false)
-    }
   }, [restaurantId])
 
   useEffect(() => {
@@ -429,12 +436,6 @@ export function OrdersDashboard({
     }
   }, [])
 
-  useEffect(() => {
-    return () => {
-      stopRinger()
-    }
-  }, [])
-
   const handleStopRinging =
     useCallback(() => {
       stopRinger()
@@ -443,7 +444,10 @@ export function OrdersDashboard({
 
   const handleStartRinging =
     useCallback(() => {
-      if (!soundEnabledRef.current) {
+      if (
+        !soundEnabledRef.current ||
+        ringerActive
+      ) {
         return
       }
 
@@ -580,17 +584,11 @@ export function OrdersDashboard({
           }
         }
 
-        const hasPending =
-          data.some(
-            (order: any) =>
-              order.status ===
-              'pending',
-          )
-
-        if (!hasPending) {
-          stopRinger()
-          setIsRinging(false)
-        }
+        /*
+         * Não existe parada automática.
+         * A campainha permanece tocando até
+         * clicar em "Iniciar preparo".
+         */
 
         prevIdsRef.current =
           currentIds
@@ -625,12 +623,17 @@ export function OrdersDashboard({
   }
 
   const handleDisableSound = () => {
+    if (isRinging) {
+      toast.error(
+        'Inicie o preparo do pedido para parar a campainha.',
+      )
+      return
+    }
+
     saveSoundPreference(
       restaurantId,
       false,
     )
-
-    handleStopRinging()
 
     soundEnabledRef.current = false
     setSoundEnabled(false)
@@ -693,6 +696,10 @@ export function OrdersDashboard({
       return
     }
 
+    /*
+     * Único ponto normal que interrompe
+     * a campainha: Iniciar preparo.
+     */
     if (
       currentStatus === 'pending'
     ) {
@@ -723,36 +730,32 @@ export function OrdersDashboard({
         'Erro ao atualizar status',
       )
 
+      /*
+       * Se a atualização falhar, o pedido
+       * continua pendente. A campainha
+       * volta a tocar.
+       */
+      if (
+        currentStatus === 'pending' &&
+        soundEnabledRef.current
+      ) {
+        handleStartRinging()
+      }
+
       return
     }
 
-    setOrders((previous) => {
-      const updated =
-        previous.map(
-          (currentOrder) =>
-            currentOrder.id ===
-            order.id
-              ? {
-                  ...currentOrder,
-                  status: next,
-                }
-              : currentOrder,
-        )
-
-      const hasPending =
-        updated.some(
-          (currentOrder) =>
-            currentOrder.status ===
-            'pending',
-        )
-
-      if (!hasPending) {
-        stopRinger()
-        setIsRinging(false)
-      }
-
-      return updated
-    })
+    setOrders((previous) =>
+      previous.map(
+        (currentOrder) =>
+          currentOrder.id === order.id
+            ? {
+                ...currentOrder,
+                status: next,
+              }
+            : currentOrder,
+      ),
+    )
 
     toast.success(
       `Status: ${STATUS_MAP[next].label}`,
@@ -762,14 +765,12 @@ export function OrdersDashboard({
   if (loading) {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        {[1, 2, 3].map(
-          (item) => (
-            <Skeleton
-              key={item}
-              className="h-48 rounded-lg"
-            />
-          ),
-        )}
+        {[1, 2, 3].map((item) => (
+          <Skeleton
+            key={item}
+            className="h-48 rounded-lg"
+          />
+        ))}
       </div>
     )
   }
@@ -820,13 +821,11 @@ export function OrdersDashboard({
             <Button
               size="sm"
               variant="destructive"
-              onClick={
-                handleStopRinging
-              }
+              disabled
               className="h-8 gap-1.5 text-xs animate-pulse"
             >
               <VolumeX className="h-3.5 w-3.5" />
-              Parar toque
+              Pedido aguardando
             </Button>
           ) : (
             <Button
