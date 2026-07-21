@@ -25,8 +25,14 @@ import {
   Volume2,
   VolumeX,
   Printer,
+  Bell,
+  BellOff,
+  Loader2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import {
+  requestFirebaseNotificationToken,
+} from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import {
@@ -39,6 +45,13 @@ type OrderStatus =
   | 'preparing'
   | 'out_for_delivery'
   | 'delivered'
+
+type PushNotificationStatus =
+  | 'checking'
+  | 'unsupported'
+  | 'default'
+  | 'denied'
+  | 'active'
 
 interface OrderItem {
   id: string
@@ -67,6 +80,12 @@ interface Order {
 
 interface OrdersDashboardProps {
   restaurantId: string
+}
+
+interface RegisterPushTokenResponse {
+  success?: boolean
+  message?: string
+  error?: string
 }
 
 const STATUS_MAP: Record<
@@ -130,6 +149,9 @@ const PAYMENT_LABEL: Record<string, string> = {
 const SOUND_STORAGE_PREFIX =
   'orders_sound_enabled'
 
+const PUSH_STORAGE_PREFIX =
+  'orders_push_enabled'
+
 const RINGTONE_PATH =
   '/audio/new-order-ring.mp3'
 
@@ -137,6 +159,12 @@ function getSoundStorageKey(
   restaurantId: string,
 ): string {
   return `${SOUND_STORAGE_PREFIX}_${restaurantId}`
+}
+
+function getPushStorageKey(
+  restaurantId: string,
+): string {
+  return `${PUSH_STORAGE_PREFIX}_${restaurantId}`
 }
 
 function loadSoundPreference(
@@ -165,6 +193,120 @@ function saveSoundPreference(
   } catch {
     // Ignora erro do armazenamento.
   }
+}
+
+function loadPushPreference(
+  restaurantId: string,
+): boolean {
+  try {
+    return (
+      localStorage.getItem(
+        getPushStorageKey(restaurantId),
+      ) === 'true'
+    )
+  } catch {
+    return false
+  }
+}
+
+function savePushPreference(
+  restaurantId: string,
+  enabled: boolean,
+): void {
+  try {
+    localStorage.setItem(
+      getPushStorageKey(restaurantId),
+      enabled ? 'true' : 'false',
+    )
+  } catch {
+    // Ignora erro do armazenamento.
+  }
+}
+
+function getDeviceName(): string {
+  if (typeof navigator === 'undefined') {
+    return 'Dispositivo desconhecido'
+  }
+
+  const userAgent =
+    navigator.userAgent.toLowerCase()
+
+  let device = 'Computador'
+
+  if (
+    userAgent.includes('android')
+  ) {
+    device = 'Celular Android'
+  } else if (
+    userAgent.includes('iphone')
+  ) {
+    device = 'iPhone'
+  } else if (
+    userAgent.includes('ipad')
+  ) {
+    device = 'iPad'
+  } else if (
+    userAgent.includes('mobile')
+  ) {
+    device = 'Celular'
+  }
+
+  let browser = 'Navegador'
+
+  if (
+    userAgent.includes('edg/')
+  ) {
+    browser = 'Edge'
+  } else if (
+    userAgent.includes('chrome/')
+  ) {
+    browser = 'Chrome'
+  } else if (
+    userAgent.includes('firefox/')
+  ) {
+    browser = 'Firefox'
+  } else if (
+    userAgent.includes('safari/')
+  ) {
+    browser = 'Safari'
+  }
+
+  return `${device} - ${browser}`
+}
+
+function getInitialPushStatus(
+  restaurantId: string,
+): PushNotificationStatus {
+  if (
+    typeof window === 'undefined' ||
+    typeof navigator === 'undefined'
+  ) {
+    return 'checking'
+  }
+
+  if (
+    !('Notification' in window) ||
+    !('serviceWorker' in navigator) ||
+    !('PushManager' in window)
+  ) {
+    return 'unsupported'
+  }
+
+  if (
+    Notification.permission === 'denied'
+  ) {
+    return 'denied'
+  }
+
+  if (
+    Notification.permission ===
+      'granted' &&
+    loadPushPreference(restaurantId)
+  ) {
+    return 'active'
+  }
+
+  return 'default'
 }
 
 function formatBRL(
@@ -356,6 +498,21 @@ export function OrdersDashboard({
   const [isRinging, setIsRinging] =
     useState(false)
 
+  const [
+    pushStatus,
+    setPushStatus,
+  ] = useState<PushNotificationStatus>(
+    () =>
+      getInitialPushStatus(
+        restaurantId,
+      ),
+  )
+
+  const [
+    activatingPush,
+    setActivatingPush,
+  ] = useState(false)
+
   const scrollRef =
     useRef<HTMLDivElement>(null)
 
@@ -376,6 +533,14 @@ export function OrdersDashboard({
 
     soundEnabledRef.current = enabled
     setSoundEnabled(enabled)
+  }, [restaurantId])
+
+  useEffect(() => {
+    setPushStatus(
+      getInitialPushStatus(
+        restaurantId,
+      ),
+    )
   }, [restaurantId])
 
   useEffect(() => {
@@ -457,6 +622,153 @@ export function OrdersDashboard({
         }
       })
     }, [])
+
+  const handleEnablePushNotifications =
+    useCallback(async () => {
+      if (
+        typeof window ===
+          'undefined' ||
+        typeof navigator ===
+          'undefined'
+      ) {
+        toast.error(
+          'Notificações não estão disponíveis neste dispositivo.',
+        )
+        return
+      }
+
+      if (
+        !('Notification' in window) ||
+        !('serviceWorker' in navigator) ||
+        !('PushManager' in window)
+      ) {
+        setPushStatus('unsupported')
+
+        toast.error(
+          'Este navegador não suporta notificações push.',
+        )
+        return
+      }
+
+      if (
+        Notification.permission ===
+        'denied'
+      ) {
+        setPushStatus('denied')
+
+        toast.error(
+          'As notificações estão bloqueadas. Libere nas configurações do navegador.',
+        )
+        return
+      }
+
+      setActivatingPush(true)
+
+      try {
+        const {
+          data: sessionData,
+          error: sessionError,
+        } = await supabase.auth
+          .getSession()
+
+        if (
+          sessionError ||
+          !sessionData.session
+        ) {
+          throw new Error(
+            'Sua sessão expirou. Entre novamente no painel.',
+          )
+        }
+
+        const token =
+          await requestFirebaseNotificationToken()
+
+        if (!token) {
+          if (
+            Notification.permission ===
+            'denied'
+          ) {
+            setPushStatus('denied')
+
+            throw new Error(
+              'As notificações foram bloqueadas no navegador.',
+            )
+          }
+
+          throw new Error(
+            'Não foi possível gerar o token de notificações.',
+          )
+        }
+
+        const {
+          data,
+          error,
+        } =
+          await supabase.functions.invoke<
+            RegisterPushTokenResponse
+          >('register-push-token', {
+            body: {
+              restaurantId,
+              token,
+              deviceName:
+                getDeviceName(),
+              userAgent:
+                navigator.userAgent,
+            },
+          })
+
+        if (error) {
+          throw new Error(
+            error.message ||
+              'Erro ao cadastrar o aparelho.',
+          )
+        }
+
+        if (
+          !data ||
+          data.success !== true
+        ) {
+          throw new Error(
+            data?.error ||
+              'Não foi possível ativar as notificações.',
+          )
+        }
+
+        savePushPreference(
+          restaurantId,
+          true,
+        )
+
+        setPushStatus('active')
+
+        toast.success(
+          'Notificações ativadas neste aparelho! 🔔',
+        )
+      } catch (error) {
+        console.error(
+          'Erro ao ativar notificações:',
+          error,
+        )
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Erro ao ativar notificações.'
+
+        toast.error(message)
+
+        if (
+          Notification.permission ===
+          'denied'
+        ) {
+          setPushStatus('denied')
+        } else {
+          setPushStatus('default')
+        }
+      } finally {
+        setActivatingPush(false)
+      }
+    }, [restaurantId])
 
   const handlePrintOrder =
     useCallback(
@@ -793,7 +1105,7 @@ export function OrdersDashboard({
           )}
         </p>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -804,6 +1116,71 @@ export function OrdersDashboard({
           >
             Atualizar
           </Button>
+
+          {pushStatus === 'active' ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled
+              className="h-8 gap-1.5 text-xs"
+              title="Este aparelho está cadastrado para receber notificações"
+            >
+              <Bell className="h-3.5 w-3.5" />
+              Notificações ativas
+            </Button>
+          ) : pushStatus ===
+            'denied' ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={
+                handleEnablePushNotifications
+              }
+              className="h-8 gap-1.5 text-xs"
+              title="Libere as notificações nas configurações do navegador"
+            >
+              <BellOff className="h-3.5 w-3.5" />
+              Notificações bloqueadas
+            </Button>
+          ) : pushStatus ===
+            'unsupported' ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled
+              className="h-8 gap-1.5 text-xs"
+              title="Este navegador não suporta notificações push"
+            >
+              <BellOff className="h-3.5 w-3.5" />
+              Push indisponível
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="default"
+              onClick={
+                handleEnablePushNotifications
+              }
+              disabled={
+                activatingPush ||
+                pushStatus ===
+                  'checking'
+              }
+              className="h-8 gap-1.5 text-xs"
+            >
+              {activatingPush ||
+              pushStatus ===
+                'checking' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Bell className="h-3.5 w-3.5" />
+              )}
+
+              {activatingPush
+                ? 'Ativando...'
+                : 'Ativar notificações'}
+            </Button>
+          )}
 
           {!soundEnabled ? (
             <Button
