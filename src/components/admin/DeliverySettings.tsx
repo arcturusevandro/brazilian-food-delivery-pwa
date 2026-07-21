@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Button,
   Input,
@@ -8,12 +8,12 @@ import {
 } from '@blinkdotnew/ui'
 import {
   Plus,
+  Save,
   Trash2,
   Truck,
-  Save,
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { supabase } from '@/lib/supabase'
 
 interface DeliveryZone {
   id: string
@@ -30,13 +30,17 @@ interface DeliverySettingsData {
   fixed_fee: number
 }
 
+interface DeliverySettingsProps {
+  restaurantId: string
+}
+
 function formatBRL(value: number): string {
   return `R$ ${value.toFixed(2).replace('.', ',')}`
 }
 
 function parseMoney(value: string): number {
   const normalized = value
-    .replace(/\s/g, '')
+    .trim()
     .replace('R$', '')
     .replace(',', '.')
 
@@ -47,9 +51,7 @@ function parseMoney(value: string): number {
 
 export function DeliverySettings({
   restaurantId,
-}: {
-  restaurantId: string
-}) {
+}: DeliverySettingsProps) {
   const [settings, setSettings] =
     useState<DeliverySettingsData>({
       restaurant_id: restaurantId,
@@ -63,10 +65,10 @@ export function DeliverySettings({
   const [loading, setLoading] =
     useState(true)
 
-  const [saving, setSaving] =
+  const [savingSettings, setSavingSettings] =
     useState(false)
 
-  const [savingUnifiedFee, setSavingUnifiedFee] =
+  const [savingFee, setSavingFee] =
     useState(false)
 
   const [newNeighborhood, setNewNeighborhood] =
@@ -79,7 +81,7 @@ export function DeliverySettings({
     setLoading(true)
 
     try {
-      const [settingsRes, zonesRes] =
+      const [settingsResult, zonesResult] =
         await Promise.all([
           supabase
             .from('delivery_settings')
@@ -94,48 +96,44 @@ export function DeliverySettings({
             .order('neighborhood'),
         ])
 
-      if (settingsRes.error) {
-        throw settingsRes.error
+      if (settingsResult.error) {
+        throw settingsResult.error
       }
 
-      if (zonesRes.error) {
-        throw zonesRes.error
+      if (zonesResult.error) {
+        throw zonesResult.error
       }
 
-      if (settingsRes.data) {
+      if (settingsResult.data) {
         setSettings(
-          settingsRes.data as DeliverySettingsData,
+          settingsResult.data as DeliverySettingsData,
         )
       }
 
       const loadedZones =
-        (zonesRes.data || []) as DeliveryZone[]
+        (zonesResult.data || []) as DeliveryZone[]
 
       setZones(loadedZones)
 
       if (loadedZones.length > 0) {
-        const currentFee =
+        const fee =
           Number(loadedZones[0].fee) || 0
 
         setUnifiedFee(
-          currentFee
-            .toFixed(2)
-            .replace('.', ','),
+          fee.toFixed(2).replace('.', ','),
         )
-      } else if (settingsRes.data) {
-        const currentFee =
-          Number(settingsRes.data.fixed_fee) || 0
+      } else if (settingsResult.data) {
+        const fee =
+          Number(settingsResult.data.fixed_fee) || 0
 
         setUnifiedFee(
-          currentFee
-            .toFixed(2)
-            .replace('.', ','),
+          fee.toFixed(2).replace('.', ','),
         )
       }
     } catch (error: any) {
       toast.error(
         error.message ||
-          'Erro ao carregar configurações de entrega',
+          'Erro ao carregar as configurações.',
       )
     } finally {
       setLoading(false)
@@ -146,8 +144,8 @@ export function DeliverySettings({
     fetchData()
   }, [fetchData])
 
-  const saveSettings = async () => {
-    setSaving(true)
+  async function saveSettings() {
+    setSavingSettings(true)
 
     try {
       const { error } = await supabase
@@ -156,8 +154,7 @@ export function DeliverySettings({
           {
             ...settings,
             restaurant_id: restaurantId,
-            updated_at:
-              new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           },
           {
             onConflict: 'restaurant_id',
@@ -168,110 +165,98 @@ export function DeliverySettings({
         throw error
       }
 
+      toast.success('Configurações salvas!')
+
+      await fetchData()
+    } catch (error: any) {
+      toast.error(
+        error.message ||
+          'Erro ao salvar as configurações.',
+      )
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  async function saveUnifiedDeliveryFee() {
+    const fee = parseMoney(unifiedFee)
+
+    if (fee < 0) {
+      toast.error(
+        'A taxa não pode ser negativa.',
+      )
+      return
+    }
+
+    if (zones.length === 0) {
+      toast.error(
+        'Nenhum bairro está cadastrado.',
+      )
+      return
+    }
+
+    setSavingFee(true)
+
+    try {
+      const { error: zonesError } =
+        await supabase
+          .from('delivery_zones')
+          .update({ fee })
+          .eq('restaurant_id', restaurantId)
+
+      if (zonesError) {
+        throw zonesError
+      }
+
+      const { error: settingsError } =
+        await supabase
+          .from('delivery_settings')
+          .upsert(
+            {
+              ...settings,
+              restaurant_id: restaurantId,
+              type: 'by_neighborhood',
+              fixed_fee: fee,
+              updated_at:
+                new Date().toISOString(),
+            },
+            {
+              onConflict: 'restaurant_id',
+            },
+          )
+
+      if (settingsError) {
+        throw settingsError
+      }
+
+      setSettings((current) => ({
+        ...current,
+        type: 'by_neighborhood',
+        fixed_fee: fee,
+      }))
+
+      setUnifiedFee(
+        fee.toFixed(2).replace('.', ','),
+      )
+
       toast.success(
-        'Configurações salvas!',
+        `Taxa de ${formatBRL(
+          fee,
+        )} aplicada a todos os bairros!`,
       )
 
       await fetchData()
     } catch (error: any) {
       toast.error(
         error.message ||
-          'Erro ao salvar configurações',
+          'Erro ao atualizar a taxa.',
       )
     } finally {
-      setSaving(false)
+      setSavingFee(false)
     }
   }
 
-  const saveUnifiedDeliveryFee =
-    async () => {
-      const fee = parseMoney(unifiedFee)
-
-      if (fee < 0) {
-        toast.error(
-          'A taxa de entrega não pode ser negativa.',
-        )
-        return
-      }
-
-      if (zones.length === 0) {
-        toast.error(
-          'Nenhum bairro foi cadastrado.',
-        )
-        return
-      }
-
-      setSavingUnifiedFee(true)
-
-      try {
-        const { error: zonesError } =
-          await supabase
-            .from('delivery_zones')
-            .update({
-              fee,
-            })
-            .eq(
-              'restaurant_id',
-              restaurantId,
-            )
-
-        if (zonesError) {
-          throw zonesError
-        }
-
-        const { error: settingsError } =
-          await supabase
-            .from('delivery_settings')
-            .upsert(
-              {
-                ...settings,
-                restaurant_id:
-                  restaurantId,
-                type: 'by_neighborhood',
-                fixed_fee: fee,
-                updated_at:
-                  new Date().toISOString(),
-              },
-              {
-                onConflict:
-                  'restaurant_id',
-              },
-            )
-
-        if (settingsError) {
-          throw settingsError
-        }
-
-        setSettings((current) => ({
-          ...current,
-          type: 'by_neighborhood',
-          fixed_fee: fee,
-        }))
-
-        setUnifiedFee(
-          fee
-            .toFixed(2)
-            .replace('.', ','),
-        )
-
-        toast.success(
-          `Taxa de ${formatBRL(
-            fee,
-          )} aplicada a todos os bairros!`,
-        )
-
-        await fetchData()
-      } catch (error: any) {
-        toast.error(
-          error.message ||
-            'Erro ao atualizar a taxa de entrega',
-        )
-      } finally {
-        setSavingUnifiedFee(false)
-      }
-    }
-
-  const addZone = async () => {
+  async function addZone() {
     const neighborhood =
       newNeighborhood.trim()
 
@@ -282,17 +267,15 @@ export function DeliverySettings({
       return
     }
 
-    const duplicatedZone =
-      zones.some(
-        (zone) =>
-          zone.neighborhood
-            .trim()
-            .toLocaleLowerCase('pt-BR') ===
-          neighborhood
-            .toLocaleLowerCase('pt-BR'),
-      )
+    const alreadyExists = zones.some(
+      (zone) =>
+        zone.neighborhood
+          .trim()
+          .toLocaleLowerCase('pt-BR') ===
+        neighborhood.toLocaleLowerCase('pt-BR'),
+    )
 
-    if (duplicatedZone) {
+    if (alreadyExists) {
       toast.error(
         'Este bairro já está cadastrado.',
       )
@@ -300,13 +283,6 @@ export function DeliverySettings({
     }
 
     const fee = parseMoney(unifiedFee)
-
-    if (fee < 0) {
-      toast.error(
-        'A taxa não pode ser negativa.',
-      )
-      return
-    }
 
     try {
       const { error } = await supabase
@@ -322,24 +298,20 @@ export function DeliverySettings({
         throw error
       }
 
-      toast.success(
-        'Bairro adicionado!',
-      )
-
       setNewNeighborhood('')
+
+      toast.success('Bairro adicionado!')
 
       await fetchData()
     } catch (error: any) {
       toast.error(
         error.message ||
-          'Erro ao adicionar bairro',
+          'Erro ao adicionar o bairro.',
       )
     }
   }
 
-  const deleteZone = async (
-    id: string,
-  ) => {
+  async function deleteZone(id: string) {
     try {
       const { error } = await supabase
         .from('delivery_zones')
@@ -350,45 +322,13 @@ export function DeliverySettings({
         throw error
       }
 
-      toast.success(
-        'Bairro removido!',
-      )
+      toast.success('Bairro removido!')
 
       await fetchData()
     } catch (error: any) {
       toast.error(
         error.message ||
-          'Erro ao remover bairro',
+          'Erro ao remover o bairro.',
       )
     }
-  }
-
-  const toggleZone = async (
-    zone: DeliveryZone,
-  ) => {
-    try {
-      const { error } = await supabase
-        .from('delivery_zones')
-        .update({
-          available:
-            !zone.available,
-        })
-        .eq('id', zone.id)
-
-      if (error) {
-        throw error
-      }
-
-      await fetchData()
-    } catch (error: any) {
-      toast.error(
-        error.message ||
-          'Erro ao alterar disponibilidade',
-      )
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton
+ 
