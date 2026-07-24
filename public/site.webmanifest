@@ -1,7 +1,7 @@
 {
   "name": "Rei do Hambúrguer",
-  "short_name": "Sabor Express",
-  "description": "P verdadeiro sabor da realeza.",
+  "short_name": "Rei do Hambírguer",
+  "description": "O verdadeiro sabor da realeza.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
