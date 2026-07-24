@@ -1,7 +1,7 @@
 {
-  "name": "Sabor Express",
+  "name": "Rei do Hambúrguer",
   "short_name": "Sabor Express",
-  "description": "Peça sua comida brasileira favorita. Delivery rápido e fácil.",
+  "description": "P verdadeiro sabor da realeza.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
