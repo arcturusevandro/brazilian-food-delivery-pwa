@@ -38,14 +38,14 @@ export const Route = createRootRoute({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1.0' },
-      { title: 'Blink App' },
+      { title: 'Rei do Hambúrguer | Centralizaweb' },
       { name: 'description', content: 'An app built with Blink.' },
       { name: 'theme-color', content: '#0a0a0a' },
       { property: 'og:type', content: 'website' },
-      { property: 'og:title', content: 'Blink App' },
+      { property: 'og:title', content: 'Rei do Hambúrguer | Centralizaweb' },
       { property: 'og:description', content: 'An app built with Blink.' },
       // Shared-shell SEO defaults — set these to the real brand/locale per app.
-      { property: 'og:site_name', content: 'Blink App' },
+      { property: 'og:site_name', content: 'Rei do Hambúrguer | Centralizaweb' },
       { property: 'og:locale', content: 'en_US' },
       { name: 'twitter:card', content: 'summary_large_image' },
     ],
