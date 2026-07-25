@@ -75,8 +75,9 @@ function RootDocument({ children }: { children: ReactNode }) {
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@graph': [
-                { '@type': 'WebSite', name: 'Sabor Express', url: '/' },
-                { '@type': 'Organization', name: 'Sabor Express', url: '/', sameAs: [] },
+                { '@type': 'WebSite', name: 'Rei do Hambúrguer', url: 'https://reidohamburguer.centralizaweb.com.br' },
+{ '@type': 'Organization', name: 'Centralizaweb', url: 'https://reidohamburguer.centralizaweb.com.br', sameAs: [] },
+              
               ],
             }),
           }}
