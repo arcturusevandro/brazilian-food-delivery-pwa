@@ -1,0 +1,15 @@
+{
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "painel.reidohamburguer.centralizaweb.com.br"
+        }
+      ],
+      "destination": "/admin",
+      "permanent": false
+    }
+  ]
+}
