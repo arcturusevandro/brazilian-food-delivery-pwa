@@ -46,7 +46,7 @@ export const Route = createRootRoute({
       { property: 'og:description', content: 'Cardápio online do Rei do Hambúrguer, desenvolvido pela Centralizaweb.' },
       // Shared-shell SEO defaults — set these to the real brand/locale per app.
       { property: 'og:site_name', content: 'Rei do Hambúrguer | Centralizaweb' },
-      { property: 'og:locale', content: 'en_US' },
+      { property: 'og:locale', content: 'pt_BR' },
       { name: 'twitter:card', content: 'summary_large_image' },
     ],
     links: [
