@@ -39,11 +39,11 @@ export const Route = createRootRoute({
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1.0' },
       { title: 'Rei do Hambúrguer | Centralizaweb' },
-      { name: 'description', content: 'An app built with Blink.' },
+      { name: 'description', content: 'Cardápio online do Rei do Hambúrguer, desenvolvido pela Centralizaweb.' },
       { name: 'theme-color', content: '#0a0a0a' },
       { property: 'og:type', content: 'website' },
       { property: 'og:title', content: 'Rei do Hambúrguer | Centralizaweb' },
-      { property: 'og:description', content: 'An app built with Blink.' },
+      { property: 'og:description', content: 'Cardápio online do Rei do Hambúrguer, desenvolvido pela Centralizaweb.' },
       // Shared-shell SEO defaults — set these to the real brand/locale per app.
       { property: 'og:site_name', content: 'Rei do Hambúrguer | Centralizaweb' },
       { property: 'og:locale', content: 'en_US' },
