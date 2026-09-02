@@ -145,38 +145,61 @@ function MenuShell() {
   const cartItemCount = useMemo(() => cart.reduce((s, i) => s + i.quantity, 0), [cart])
   const productQty = useCallback((id: string) => cart.filter(i => i.product.id === id).reduce((s, i) => s + i.quantity, 0), [cart])
 
-  const submitOrder = useCallback(async (form: CheckoutForm, deliveryFee: number) => {
+  const submitOrder = useCallback(async (form: CheckoutForm, _deliveryFee: number) => {
     if (!restaurant || cart.length === 0) return
     if (!restaurant.is_open) { alert('O restaurante está fechado no momento. Tente novamente mais tarde.'); return }
     setSubmitting(true)
     try {
-      const total = cartSubtotal + deliveryFee
       const { data: sd } = await supabase.auth.getSession()
-      if (!sd.session) { const { error: ae } = await supabase.auth.signInAnonymously(); if (ae) throw ae }
+      if (!sd.session) {
+        const { error: ae } = await supabase.auth.signInAnonymously()
+        if (ae) throw ae
+      }
+
       let notes = form.notes || ''
       if (form.payment_method === 'cash' && form.change_for.trim()) {
-        const t = `Troco para: R$ ${form.change_for}`; notes = notes ? `${t} | ${notes}` : t
+        const changeNote = `Troco para: R$ ${form.change_for}`
+        notes = notes ? `${changeNote} | ${notes}` : changeNote
       }
-      const { data: od, error: oe } = await supabase.from('orders').insert({
-        restaurant_id: restaurant.id, customer_name: form.customer_name, customer_phone: form.customer_phone,
-        address: form.address, neighborhood: form.neighborhood || null, payment_method: form.payment_method,
-        status: 'pending', total, delivery_fee: deliveryFee, notes: notes || null,
-      }).select('id').single()
-      if (oe) throw oe
-      const items = cart.map(i => ({
-        order_id: od.id, product_id: i.product.id,
-        product_name: i.addons.length > 0 ? `${i.product.name} (+ ${i.addons.map(a => a.name).join(', ')})` : i.product.name,
-        quantity: i.quantity, unit_price: itemUnitPrice(i),
+
+      const items = cart.map(item => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+        addon_ids: item.addons.map(addon => addon.id),
       }))
-      const { error: ie } = await supabase.from('order_items').insert(items)
-      if (ie) throw ie
+
+      const { data, error } = await supabase.rpc('create_order', {
+        p_restaurant_id: restaurant.id,
+        p_customer_name: form.customer_name,
+        p_customer_phone: form.customer_phone,
+        p_address: form.address,
+        p_neighborhood: form.neighborhood || '',
+        p_payment_method: form.payment_method,
+        p_notes: notes || '',
+        p_items: items,
+      })
+
+      if (error) throw error
+
+      const result = data as {
+        order_id: string
+        total: number
+        delivery_fee: number
+      }
+
       setCart([])
       setCheckoutOpen(false)
-      setOrderConfirmed({ id: od.id, total, deliveryFee })
+      setOrderConfirmed({
+        id: result.order_id,
+        total: Number(result.total),
+        deliveryFee: Number(result.delivery_fee),
+      })
     } catch (err: any) {
       alert(`Erro ao fazer pedido: ${err.message || 'Tente novamente.'}`)
-    } finally { setSubmitting(false) }
-  }, [restaurant, cart, cartSubtotal])
+    } finally {
+      setSubmitting(false)
+    }
+  }, [restaurant, cart])
 
   const productsByCategory = useMemo(() => {
     const map = new Map<string, Product[]>()
