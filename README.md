@@ -1,59 +1,49 @@
-# Enhanced Vite React TypeScript Template
+# Brazilian Food Delivery PWA
 
-This template includes built-in detection for missing CSS variables between your Tailwind config and CSS files.
+Plataforma web desenvolvida para **digitalizar e automatizar operações de delivery**, conectando experiência do cliente, processamento de pedidos, checkout, dados e fluxos operacionais em uma única aplicação.
 
-## Features
+O projeto é utilizado como ambiente prático para desenvolvimento e validação de soluções que conectam **processos de negócio, automação, dados e tecnologia**.
 
-- **CSS Variable Detection**: Automatically detects if CSS variables referenced in `tailwind.config.cjs` are defined in `src/index.css`
-- **Enhanced Linting**: Includes ESLint, Stylelint, and custom CSS variable validation
-- **Shadcn/ui**: Pre-configured with all Shadcn components
-- **Modern Stack**: Vite + React + TypeScript + Tailwind CSS
+## Objetivo
 
-## Available Scripts
+Estruturar uma experiência digital de pedidos e, ao mesmo tempo, trabalhar os processos necessários para que a operação seja organizada, rastreável e preparada para evolução.
 
-```bash
-# Run all linting (includes CSS variable check)
-npm run lint
+O desenvolvimento envolve análise do fluxo operacional, definição de regras de negócio, estruturação da aplicação, integrações, testes, identificação de falhas e melhoria contínua.
 
-# Check only CSS variables
-npm run check:css-vars
+## Tecnologias
 
-# Individual linting
-npm run lint:js    # ESLint
-npm run lint:css   # Stylelint
-```
+Entre as principais tecnologias e ferramentas utilizadas no projeto estão:
 
-## CSS Variable Detection
+- React;
+- TypeScript;
+- Vite;
+- Supabase;
+- PostgreSQL / SQL;
+- Firebase;
+- TanStack Query e Router;
+- Tailwind CSS;
+- Git e GitHub.
 
-The template includes a custom script that:
+## Aspectos trabalhados
 
-1. **Parses `tailwind.config.cjs`** to find all `var(--variable)` references
-2. **Parses `src/index.css`** to find all defined CSS variables (`--variable:`)
-3. **Cross-references** them to find missing definitions
-4. **Reports undefined variables** with clear error messages
+- estruturação de fluxos de pedidos;
+- interface web responsiva;
+- tratamento e persistência de dados;
+- checkout e fluxos operacionais;
+- integração entre aplicação e serviços;
+- regras de negócio;
+- validação de dados;
+- testes funcionais e correção de falhas;
+- versionamento e evolução contínua da aplicação.
 
-### Example Output
+## Abordagem
 
-When CSS variables are missing:
-```
-❌ Undefined CSS variables found in tailwind.config.cjs:
-   --sidebar-background
-   --sidebar-foreground
-   --sidebar-primary
+O projeto parte da compreensão da operação antes da automação: quais informações precisam circular, quais regras precisam ser respeitadas, onde existem atividades manuais e como a tecnologia pode organizar melhor o processo.
 
-Add these variables to src/index.css
-```
+## Status
 
-When all variables are defined:
-```
-✅ All CSS variables in tailwind.config.cjs are defined
-```
+Projeto em desenvolvimento e evolução contínua.
 
-## How It Works
+---
 
-The detection happens during the `npm run lint` command, which will:
-- Exit with error code 1 if undefined variables are found
-- Show exactly which variables need to be added to your CSS file
-- Integrate seamlessly with your development workflow
-
-This prevents runtime CSS issues where Tailwind classes reference undefined CSS variables.
+Desenvolvido por **Evandro Bueno** como projeto autoral de tecnologia, processos e automação.
