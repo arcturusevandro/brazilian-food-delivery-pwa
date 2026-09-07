@@ -29,9 +29,10 @@
     "allowUnreachableCode": true,
     "allowUnusedLabels": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@blinkdotnew/ui": ["./src/components/ui/blink-compat.tsx"]
     }
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
-} 
+}
