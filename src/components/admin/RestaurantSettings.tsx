@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Button, Input, Label, Switch, Skeleton } from '@blinkdotnew/ui'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { supabase } from '@/lib/supabase'
 import { Restaurant } from '@/hooks/useRestaurant'
 import toast from 'react-hot-toast'
@@ -62,77 +65,26 @@ export function RestaurantSettings({
     <div className="space-y-6 max-w-lg">
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Informações do restaurante</h2>
-
-        <div className="space-y-2">
-          <Label htmlFor="r-name">Nome *</Label>
-          <Input
-            id="r-name"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="Ex: Rei do Hamburguer"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="r-phone">Telefone / WhatsApp</Label>
-          <Input
-            id="r-phone"
-            value={phone}
-            onChange={e => setPhone(e.target.value)}
-            placeholder="(66) 99999-9999"
-            type="tel"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="r-address">Endereço do estabelecimento</Label>
-          <Input
-            id="r-address"
-            value={address}
-            onChange={e => setAddress(e.target.value)}
-            placeholder="Rua, número, bairro"
-          />
-        </div>
-
+        <div className="space-y-2"><Label htmlFor="r-name">Nome *</Label><Input id="r-name" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Rei do Hamburguer" /></div>
+        <div className="space-y-2"><Label htmlFor="r-phone">Telefone / WhatsApp</Label><Input id="r-phone" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(66) 99999-9999" type="tel" /></div>
+        <div className="space-y-2"><Label htmlFor="r-address">Endereço do estabelecimento</Label><Input id="r-address" value={address} onChange={e => setAddress(e.target.value)} placeholder="Rua, número, bairro" /></div>
         <div className="space-y-2">
           <Label htmlFor="r-logo">URL do logo</Label>
-          <Input
-            id="r-logo"
-            value={logoUrl}
-            onChange={e => setLogoUrl(e.target.value)}
-            placeholder="https://..."
-          />
-          {logoUrl && (
-            <img
-              src={logoUrl}
-              alt="Preview do logo"
-              className="h-16 w-16 rounded-xl object-cover border border-border"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
-          )}
+          <Input id="r-logo" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} placeholder="https://..." />
+          {logoUrl && <img src={logoUrl} alt="Preview do logo" className="h-16 w-16 rounded-xl object-cover border border-border" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
         </div>
       </section>
-
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Status do restaurante</h2>
         <div className="flex items-center justify-between rounded-lg border border-border bg-background px-4 py-3">
           <div>
-            <p className="text-sm font-medium">
-              {isOpen ? '🟢 Aberto — aceitando pedidos' : '🔴 Fechado — não aceita pedidos'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {isOpen
-                ? 'Clientes podem fazer pedidos agora'
-                : 'Cardápio visível mas pedidos bloqueados'}
-            </p>
+            <p className="text-sm font-medium">{isOpen ? '🟢 Aberto — aceitando pedidos' : '🔴 Fechado — não aceita pedidos'}</p>
+            <p className="text-xs text-muted-foreground">{isOpen ? 'Clientes podem fazer pedidos agora' : 'Cardápio visível mas pedidos bloqueados'}</p>
           </div>
           <Switch checked={isOpen} onCheckedChange={setIsOpen} />
         </div>
       </section>
-
-      <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
-        {saving ? 'Salvando...' : 'Salvar configurações'}
-      </Button>
+      <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">{saving ? 'Salvando...' : 'Salvar configurações'}</Button>
     </div>
   )
 }
