@@ -35,11 +35,8 @@ jobs:
       - name: JavaScript lint
         run: bun run lint:js
 
-      - name: CSS variable checks
-        run: bun run check:css-vars
-
-      - name: CSS class checks
-        run: bun run check:css-classes
+      - name: CSS lint
+        run: bun run lint:css
 
       - name: Build
         run: bun run build
