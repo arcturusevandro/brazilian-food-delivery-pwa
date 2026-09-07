@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - refactor/blink-ui-migration
+      - audit/post-migration-hardening-2026-09-07
   pull_request:
     branches:
       - main
@@ -24,7 +25,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.2
 
       - name: Install dependencies
         run: bun install
