@@ -18,7 +18,7 @@ export const Route = createRootRoute({
       { name: 'viewport', content: 'width=device-width, initial-scale=1.0' },
       { title: 'Rei do Hambúrguer | Centralizaweb' },
       { name: 'description', content: 'Cardápio online do Rei do Hambúrguer, desenvolvido pela Centralizaweb.' },
-      { name: 'theme-color', content: '#0a0a0a' },
+      { name: 'theme-color', content: '#D4A017' },
       { property: 'og:type', content: 'website' },
       { property: 'og:title', content: 'Rei do Hambúrguer | Centralizaweb' },
       { property: 'og:description', content: 'Cardápio online do Rei do Hambúrguer, desenvolvido pela Centralizaweb.' },
@@ -29,7 +29,7 @@ export const Route = createRootRoute({
     links: [
       { rel: 'stylesheet', href: indexCss },
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
-      { rel: 'manifest', href: '/site.webmanifest' },
+      { rel: 'manifest', href: '/manifest.json' },
     ],
   }),
   shellComponent: RootDocument,
