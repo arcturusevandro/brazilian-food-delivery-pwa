@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@blinkdotnew/ui'
+import { Button, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@/components/ui/blink-compat'
 import { supabase } from '@/lib/supabase'
 import toast, { Toaster as HotToaster } from 'react-hot-toast'
 

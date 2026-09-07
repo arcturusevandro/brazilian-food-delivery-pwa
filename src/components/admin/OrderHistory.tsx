@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Skeleton, Input, Label } from '@blinkdotnew/ui'
 import { Clock, CheckCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 interface OrderItem {
   id: string

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Button, Switch, Skeleton } from '@blinkdotnew/ui'
 import { Plus, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Skeleton } from '@/components/ui/skeleton'
 import toast from 'react-hot-toast'
 
 const DAYS = [
@@ -86,7 +88,6 @@ export function BusinessHours({ restaurantId }: { restaurantId: string }) {
   }
 
   const saveAll = async () => {
-    // Valida horários
     for (const h of hours) {
       if (!h.is_active) continue
       if (!h.open_time || !h.close_time) {
@@ -140,7 +141,6 @@ export function BusinessHours({ restaurantId }: { restaurantId: string }) {
 
           return (
             <div key={day.value} className={`rounded-lg border px-3 py-3 space-y-2.5 transition-all ${h.is_active ? 'border-border bg-background' : 'border-border/40 bg-muted/20'}`}>
-              {/* Cabeçalho do dia */}
               <div className="flex items-center gap-3">
                 <Switch
                   checked={h.is_active}
@@ -154,7 +154,6 @@ export function BusinessHours({ restaurantId }: { restaurantId: string }) {
 
               {h.is_active && (
                 <div className="pl-9 space-y-2">
-                  {/* 1º Turno */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-muted-foreground w-14 shrink-0">1º turno</span>
                     <TimeInput value={h.open_time} onChange={v => update(day.value, 'open_time', v)} />
@@ -162,7 +161,6 @@ export function BusinessHours({ restaurantId }: { restaurantId: string }) {
                     <TimeInput value={h.close_time} onChange={v => update(day.value, 'close_time', v)} />
                   </div>
 
-                  {/* 2º Turno */}
                   {hasSecondShift ? (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-muted-foreground w-14 shrink-0">2º turno</span>

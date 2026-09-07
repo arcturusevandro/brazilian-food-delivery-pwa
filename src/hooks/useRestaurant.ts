@@ -11,6 +11,7 @@ export interface Restaurant {
   phone: string | null
   address: string | null
   is_open: boolean
+  manual_override: boolean
   created_at?: string
 }
 
@@ -53,6 +54,7 @@ export function useRestaurant() {
         name,
         slug,
         is_open: true,
+        manual_override: false,
       })
       .select()
       .single()
