@@ -25,28 +25,13 @@ import {
   Loader2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import {
-  requestFirebaseNotificationToken,
-} from '@/lib/firebase'
+import { requestFirebaseNotificationToken } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import {
-  printOrder,
-  PrinterConfig,
-} from '@/lib/usePrinter'
+import { printOrder, PrinterConfig } from '@/lib/usePrinter'
 
-type OrderStatus =
-  | 'pending'
-  | 'preparing'
-  | 'out_for_delivery'
-  | 'delivered'
-
-type PushNotificationStatus =
-  | 'checking'
-  | 'unsupported'
-  | 'default'
-  | 'denied'
-  | 'active'
+type OrderStatus = 'pending' | 'preparing' | 'out_for_delivery' | 'delivered'
+type PushNotificationStatus = 'checking' | 'unsupported' | 'default' | 'denied' | 'active'
 
 interface OrderItem {
   id: string
@@ -73,15 +58,8 @@ interface Order {
   items: OrderItem[]
 }
 
-interface OrdersDashboardProps {
-  restaurantId: string
-}
-
-interface RegisterPushTokenResponse {
-  success?: boolean
-  message?: string
-  error?: string
-}
+interface OrdersDashboardProps { restaurantId: string }
+interface RegisterPushTokenResponse { success?: boolean; message?: string; error?: string }
 
 const STATUS_MAP: Record<OrderStatus, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive'; icon: React.ReactNode }> = {
   pending: { label: 'Pendente', variant: 'destructive', icon: <Clock className="h-3.5 w-3.5" /> },
@@ -172,7 +150,8 @@ export function OrdersDashboard({ restaurantId }: OrdersDashboardProps) {
     if (!soundEnabled) return
     let unlocked = false
     const handleInteraction = () => { if (unlocked) return; unlocked = true; void unlockAudio() }
-    window.addEventListener('pointerdown', handleInteraction); window.addEventListener('keydown', handleInteraction)
+    window.addEventListener('pointerdown', handleInteraction)
+    window.addEventListener('keydown', handleInteraction)
     return () => { window.removeEventListener('pointerdown', handleInteraction); window.removeEventListener('keydown', handleInteraction) }
   }, [soundEnabled])
   useEffect(() => { const handler = () => { printerConfigRef.current = loadPrinterConfig() }; window.addEventListener('storage', handler); return () => window.removeEventListener('storage', handler) }, [])
@@ -193,71 +172,141 @@ export function OrdersDashboard({ restaurantId }: OrdersDashboardProps) {
       const { data, error } = await supabase.functions.invoke<RegisterPushTokenResponse>('register-push-token', { body: { restaurantId, token, deviceName: getDeviceName(), userAgent: navigator.userAgent } })
       if (error) throw new Error(error.message || 'Erro ao cadastrar o aparelho.')
       if (!data || data.success !== true) throw new Error(data?.error || 'Não foi possível ativar as notificações.')
-      savePushPreference(restaurantId, true); setPushStatus('active'); toast.success(data.message || 'Notificações ativadas neste aparelho.')
-    } catch (error) { const message = error instanceof Error ? error.message : 'Erro ao ativar notificações.'; toast.error(message); if (typeof Notification !== 'undefined' && getNotificationPermission() === 'denied') setPushStatus('denied') }
-    finally { setActivatingPush(false) }
+      savePushPreference(restaurantId, true)
+      setPushStatus('active')
+      toast.success(data.message || 'Notificações ativadas neste aparelho.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao ativar notificações.'
+      toast.error(message)
+      if (typeof Notification !== 'undefined' && getNotificationPermission() === 'denied') setPushStatus('denied')
+      else setPushStatus('default')
+    } finally { setActivatingPush(false) }
   }, [restaurantId])
 
-  const fetchOrders = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true)
+  const handlePrintOrder = useCallback(async (order: Order) => {
+    const config = printerConfigRef.current
+    if (config.connection === 'none') return
     try {
-      const { data: orderData, error: orderError } = await supabase.from('orders').select('*').eq('restaurant_id', restaurantId).in('status', ['pending','preparing','out_for_delivery']).order('created_at', { ascending: false })
-      if (orderError) throw orderError
-      const ids = (orderData || []).map((o: Omit<Order, 'items'>) => o.id)
-      let items: OrderItem[] = []
-      if (ids.length > 0) { const { data: itemData } = await supabase.from('order_items').select('*').in('order_id', ids); items = itemData || [] }
-      const enriched: Order[] = (orderData || []).map((o: Omit<Order, 'items'>) => ({ ...o, items: items.filter(i => i.order_id === o.id) }))
-      if (silent && prevIdsRef.current.size > 0) {
-        const newOrders = enriched.filter((o) => !prevIdsRef.current.has(o.id) && o.status === 'pending')
-        if (newOrders.length > 0) {
-          if (soundEnabledRef.current) handleStartRinging()
-          const cfg = printerConfigRef.current
-          if (cfg.autoprint && cfg.connection !== 'none') for (const o of newOrders) void printOrder(o, cfg)
+      await printOrder({
+        id: order.id,
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        address: order.address,
+        neighborhood: order.neighborhood,
+        payment_method: order.payment_method,
+        notes: order.notes,
+        total: order.total,
+        delivery_fee: order.delivery_fee ?? 0,
+        created_at: order.created_at,
+        items: order.items.map(item => ({ product_name: item.product_name, quantity: item.quantity, unit_price: item.unit_price })),
+      }, config)
+      toast.success('Pedido impresso!')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao imprimir')
+    }
+  }, [])
+
+  const fetchOrders = useCallback(async (notify = false) => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*)')
+      .eq('restaurant_id', restaurantId)
+      .neq('status', 'delivered')
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      const normalized: Order[] = data.map((order: Omit<Order, 'items'> & { items?: OrderItem[] | null }) => ({ ...order, items: order.items || [] }))
+      const currentIds = new Set(normalized.map(order => order.id))
+      const newOrders = notify ? normalized.filter(order => !prevIdsRef.current.has(order.id)) : []
+
+      if (newOrders.length > 0) {
+        toast.success(`${newOrders.length === 1 ? 'Novo pedido recebido' : `${newOrders.length} novos pedidos`}! 🎉`)
+        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+        handleStartRinging()
+        const config = printerConfigRef.current
+        if (config.connection !== 'none' && config.autoprint) {
+          for (const order of newOrders) await handlePrintOrder(order)
         }
       }
-      prevIdsRef.current = new Set(enriched.map((o) => o.id)); setOrders(enriched); setLastUpdate(new Date())
-    } catch (err) { console.error(err); if (!silent) toast.error('Erro ao carregar pedidos') }
-    finally { if (!silent) setLoading(false) }
-  }, [restaurantId, handleStartRinging])
 
+      prevIdsRef.current = currentIds
+      setOrders(normalized)
+      setLastUpdate(new Date())
+    }
+    setLoading(false)
+  }, [restaurantId, handleStartRinging, handlePrintOrder])
+
+  useEffect(() => { fetchOrders(false) }, [fetchOrders])
   useEffect(() => {
-    fetchOrders()
-    const channel = supabase.channel(`orders-${restaurantId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` }, () => { fetchOrders(true) }).subscribe()
-    const interval = setInterval(() => fetchOrders(true), 30000)
-    return () => { supabase.removeChannel(channel); clearInterval(interval); stopRinger() }
+    const interval = setInterval(() => { fetchOrders(true) }, 8000)
+    return () => clearInterval(interval)
+  }, [fetchOrders])
+  useEffect(() => {
+    const channel = supabase
+      .channel(`orders-admin-rt-${restaurantId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` }, () => { fetchOrders(true) })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [restaurantId, fetchOrders])
 
   const updateStatus = async (order: Order) => {
-    const next = STATUS_NEXT[order.status]; if (!next) return
-    if (order.status === 'pending') handleStopRinging()
+    const next = STATUS_NEXT[order.status]
+    if (!next) return
+
+    if (order.status === 'pending') {
+      handleStopRinging()
+      const config = printerConfigRef.current
+      if (config.connection !== 'none' && !config.autoprint) await handlePrintOrder(order)
+    }
+
     const { error } = await supabase.from('orders').update({ status: next }).eq('id', order.id)
-    if (error) toast.error('Erro ao atualizar pedido'); else { toast.success(`Pedido marcado como ${STATUS_MAP[next].label}`); fetchOrders(true) }
+    if (error) {
+      toast.error('Erro ao atualizar status')
+      if (order.status === 'pending' && soundEnabledRef.current) handleStartRinging()
+      return
+    }
+
+    setOrders(previous => previous.map(current => current.id === order.id ? { ...current, status: next } : current))
+    toast.success(`Status: ${STATUS_MAP[next].label}`)
   }
 
-  const handleSoundToggle = () => { const next = !soundEnabled; setSoundEnabled(next); soundEnabledRef.current = next; saveSoundPreference(restaurantId, next); if (!next) handleStopRinging(); else { void unlockAudio(); toast.success('Som de novos pedidos ativado!') } }
+  const handleSoundToggle = () => {
+    if (soundEnabled && isRinging) {
+      toast.error('Inicie o preparo do pedido para parar a campainha.')
+      return
+    }
+    const next = !soundEnabled
+    saveSoundPreference(restaurantId, next)
+    soundEnabledRef.current = next
+    setSoundEnabled(next)
+    if (next) { void testRing(); toast.success('Som ativado! 🔔') }
+    else toast.success('Som desativado')
+  }
 
   if (loading) return <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-48 rounded-xl" />)}</div>
 
   return (
     <div className="space-y-5" ref={scrollRef}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div><h2 className="text-lg font-semibold">Pedidos em andamento</h2><p className="text-xs text-muted-foreground">Atualizado às {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p></div>
+        <div><h2 className="text-lg font-semibold">Pedidos em andamento</h2><p className="text-xs text-muted-foreground">Atualizado às {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p></div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={handleSoundToggle}>{soundEnabled ? <Volume2 className="mr-2 h-4 w-4" /> : <VolumeX className="mr-2 h-4 w-4" />}{soundEnabled ? 'Som ligado' : 'Som desligado'}</Button>
-          {soundEnabled && <Button variant="outline" size="sm" onClick={() => void testRing()}><Bell className="mr-2 h-4 w-4" />Testar som</Button>}
-          <Button variant="outline" size="sm" disabled={activatingPush || pushStatus === 'unsupported' || pushStatus === 'denied'} onClick={() => void handleEnablePushNotifications()}>
+          <Button variant="outline" size="sm" onClick={() => fetchOrders(false)}>Atualizar</Button>
+          <Button variant="outline" size="sm" onClick={handleSoundToggle}>{soundEnabled ? <Volume2 className="mr-2 h-4 w-4" /> : <VolumeX className="mr-2 h-4 w-4" />}{isRinging ? 'Pedido aguardando' : soundEnabled ? 'Som ativo' : 'Ativar som'}</Button>
+          {soundEnabled && !isRinging && <Button variant="outline" size="sm" onClick={() => void testRing()}><Bell className="mr-2 h-4 w-4" />Testar som</Button>}
+          <Button variant="outline" size="sm" disabled={activatingPush || pushStatus === 'unsupported'} onClick={() => void handleEnablePushNotifications()}>
             {activatingPush ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : pushStatus === 'active' ? <Bell className="mr-2 h-4 w-4" /> : <BellOff className="mr-2 h-4 w-4" />}
             {pushStatus === 'active' ? 'Push ativo' : pushStatus === 'denied' ? 'Push bloqueado' : pushStatus === 'unsupported' ? 'Push indisponível' : 'Ativar push'}
           </Button>
         </div>
       </div>
 
-      {isRinging && <div className="flex items-center justify-between rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3"><div className="flex items-center gap-2 text-sm font-medium"><Bell className="h-4 w-4 animate-pulse" />Novo pedido recebido</div><Button variant="destructive" size="sm" onClick={handleStopRinging}>Parar campainha</Button></div>}
+      {isRinging && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3"><div className="flex items-center gap-2 text-sm font-medium"><Bell className="h-4 w-4 animate-pulse" />Novo pedido aguardando — inicie o preparo para parar a campainha.</div></div>}
 
       {orders.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center justify-center py-12 text-center"><Package className="mb-3 h-10 w-10 text-muted-foreground/50" /><p className="font-medium">Nenhum pedido em andamento</p><p className="text-sm text-muted-foreground">Novos pedidos aparecerão aqui automaticamente.</p></CardContent></Card>
       ) : orders.map(order => {
         const next = STATUS_NEXT[order.status]
+        const subtotal = order.total - (order.delivery_fee || 0)
         return (
           <Card key={order.id} className={cn(order.status === 'pending' && 'border-destructive/50')}>
             <CardHeader className="pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-base">{order.customer_name}</CardTitle><p className="text-xs text-muted-foreground">{formatDateTime(order.created_at)}</p></div><Badge variant={STATUS_MAP[order.status].variant} className="gap-1">{STATUS_MAP[order.status].icon}{STATUS_MAP[order.status].label}</Badge></div></CardHeader>
@@ -267,11 +316,14 @@ export function OrdersDashboard({ restaurantId }: OrdersDashboardProps) {
                 <div className="flex gap-2"><MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" /><span>{order.address}{order.neighborhood ? ` — ${order.neighborhood}` : ''}</span></div>
                 <div className="flex gap-2"><CreditCard className="mt-0.5 h-4 w-4 text-muted-foreground" /><span>{PAYMENT_LABEL[order.payment_method] || order.payment_method}</span></div>
               </div>
-              <div className="rounded-lg bg-muted/40 p-3"><div className="space-y-1.5">{order.items.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span>{item.quantity}× {item.product_name}</span><span>{formatBRL(item.quantity * item.unit_price)}</span></div>)}</div><div className="mt-3 flex justify-between border-t border-border pt-3 font-semibold"><span>Total</span><span>{formatBRL(order.total)}</span></div></div>
+              <div className="rounded-lg bg-muted/40 p-3">
+                <div className="space-y-1.5">{order.items.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span>{item.quantity}× {item.product_name}</span><span>{formatBRL(item.quantity * item.unit_price)}</span></div>)}</div>
+                <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{formatBRL(subtotal)}</span></div><div className="flex justify-between"><span>Entrega</span><span>{(order.delivery_fee || 0) > 0 ? formatBRL(order.delivery_fee || 0) : 'Grátis'}</span></div><div className="flex justify-between font-semibold"><span>Total</span><span>{formatBRL(order.total)}</span></div></div>
+              </div>
               {order.notes && <p className="rounded-md bg-accent px-3 py-2 text-sm"><strong>Observação:</strong> {order.notes}</p>}
               <div className="flex flex-wrap gap-2">
-                {next && <Button onClick={() => void updateStatus(order)}>{STATUS_MAP[next].icon}<span className="ml-2">Marcar como {STATUS_MAP[next].label}</span></Button>}
-                <Button variant="outline" onClick={() => void printOrder(order, printerConfigRef.current)}><Printer className="mr-2 h-4 w-4" />Imprimir</Button>
+                {next && <Button onClick={() => void updateStatus(order)}>{order.status === 'pending' && printerConfigRef.current.connection !== 'none' && !printerConfigRef.current.autoprint && <Printer className="mr-2 h-4 w-4" />}{STATUS_MAP[next].icon}<span className="ml-2">{order.status === 'pending' ? 'Iniciar Preparo' : order.status === 'preparing' ? 'Sair p/ Entrega' : 'Marcar Entregue'}</span></Button>}
+                {printerConfigRef.current.connection !== 'none' && <Button variant="outline" onClick={() => void handlePrintOrder(order)}><Printer className="mr-2 h-4 w-4" />Imprimir</Button>}
               </div>
             </CardContent>
           </Card>
