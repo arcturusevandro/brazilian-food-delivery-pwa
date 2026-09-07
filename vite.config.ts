@@ -17,7 +17,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
-      '@blinkdotnew/ui': path.resolve(import.meta.dirname, './src/components/ui/blink-compat.tsx'),
     },
     dedupe: ['react', 'react-dom'],
   },
