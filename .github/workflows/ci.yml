@@ -39,5 +39,8 @@ jobs:
       - name: CSS lint
         run: bun run lint:css
 
+      - name: Service worker syntax
+        run: bun run lint:sw
+
       - name: Build
         run: bun run build
