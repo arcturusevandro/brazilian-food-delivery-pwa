@@ -24,6 +24,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
+      '@blinkdotnew/ui': path.resolve(import.meta.dirname, './src/components/ui/blink-compat.tsx'),
     },
     // UI libraries, framer-motion and R3F peers must share one React instance.
     dedupe: ['react', 'react-dom'],
