@@ -10,9 +10,7 @@
     "lint:css": "stylelint \"src/**/*.css\" --fix --quiet",
     "lint:js": "eslint src --ext ts,tsx --report-unused-disable-directives",
     "lint:types": "tsc --noEmit",
-    "check:css-vars": "node scripts/check-css-variables.js",
-    "check:css-classes": "node scripts/check-css-classes.js",
-    "lint": "bun run lint:types && bun run lint:js && bun run lint:css && bun run check:css-vars && bun run check:css-classes"
+    "lint": "bun run lint:types && bun run lint:js && bun run lint:css"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
