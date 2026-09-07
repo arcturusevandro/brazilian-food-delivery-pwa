@@ -70,7 +70,7 @@ interface Order {
   delivery_fee: number | null
   notes: string | null
   created_at: string
-  items?: OrderItem[]
+  items: OrderItem[]
 }
 
 interface OrdersDashboardProps {
@@ -105,6 +105,7 @@ function loadSoundPreference(restaurantId: string): boolean { try { return local
 function saveSoundPreference(restaurantId: string, enabled: boolean): void { try { localStorage.setItem(getSoundStorageKey(restaurantId), enabled ? 'true' : 'false') } catch {} }
 function loadPushPreference(restaurantId: string): boolean { try { return localStorage.getItem(getPushStorageKey(restaurantId)) === 'true' } catch { return false } }
 function savePushPreference(restaurantId: string, enabled: boolean): void { try { localStorage.setItem(getPushStorageKey(restaurantId), enabled ? 'true' : 'false') } catch {} }
+function getNotificationPermission(): NotificationPermission { return Notification.permission }
 
 function getDeviceName(): string {
   if (typeof navigator === 'undefined') return 'Dispositivo desconhecido'
@@ -125,8 +126,8 @@ function getDeviceName(): string {
 function getInitialPushStatus(restaurantId: string): PushNotificationStatus {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'checking'
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported'
-  if (Notification.permission === 'denied') return 'denied'
-  if (Notification.permission === 'granted' && loadPushPreference(restaurantId)) return 'active'
+  if (getNotificationPermission() === 'denied') return 'denied'
+  if (getNotificationPermission() === 'granted' && loadPushPreference(restaurantId)) return 'active'
   return 'default'
 }
 
@@ -182,18 +183,18 @@ export function OrdersDashboard({ restaurantId }: OrdersDashboardProps) {
   const handleEnablePushNotifications = useCallback(async () => {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') { toast.error('Notificações não estão disponíveis neste dispositivo.'); return }
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) { setPushStatus('unsupported'); toast.error('Este navegador não suporta notificações push.'); return }
-    if (Notification.permission === 'denied') { setPushStatus('denied'); toast.error('As notificações estão bloqueadas. Libere nas configurações do navegador.'); return }
+    if (getNotificationPermission() === 'denied') { setPushStatus('denied'); toast.error('As notificações estão bloqueadas. Libere nas configurações do navegador.'); return }
     setActivatingPush(true)
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
       if (sessionError || !sessionData.session) throw new Error('Sua sessão expirou. Entre novamente no painel.')
       const token = await requestFirebaseNotificationToken()
-      if (!token) { if (Notification.permission === 'denied') { setPushStatus('denied'); throw new Error('As notificações foram bloqueadas no navegador.') }; throw new Error('Não foi possível gerar o token de notificações.') }
+      if (!token) { if (getNotificationPermission() === 'denied') { setPushStatus('denied'); throw new Error('As notificações foram bloqueadas no navegador.') }; throw new Error('Não foi possível gerar o token de notificações.') }
       const { data, error } = await supabase.functions.invoke<RegisterPushTokenResponse>('register-push-token', { body: { restaurantId, token, deviceName: getDeviceName(), userAgent: navigator.userAgent } })
       if (error) throw new Error(error.message || 'Erro ao cadastrar o aparelho.')
       if (!data || data.success !== true) throw new Error(data?.error || 'Não foi possível ativar as notificações.')
       savePushPreference(restaurantId, true); setPushStatus('active'); toast.success(data.message || 'Notificações ativadas neste aparelho.')
-    } catch (error) { const message = error instanceof Error ? error.message : 'Erro ao ativar notificações.'; toast.error(message); if (Notification.permission === 'denied') setPushStatus('denied') }
+    } catch (error) { const message = error instanceof Error ? error.message : 'Erro ao ativar notificações.'; toast.error(message); if (typeof Notification !== 'undefined' && getNotificationPermission() === 'denied') setPushStatus('denied') }
     finally { setActivatingPush(false) }
   }, [restaurantId])
 
@@ -202,19 +203,19 @@ export function OrdersDashboard({ restaurantId }: OrdersDashboardProps) {
     try {
       const { data: orderData, error: orderError } = await supabase.from('orders').select('*').eq('restaurant_id', restaurantId).in('status', ['pending','preparing','out_for_delivery']).order('created_at', { ascending: false })
       if (orderError) throw orderError
-      const ids = (orderData || []).map((o: Order) => o.id)
+      const ids = (orderData || []).map((o: Omit<Order, 'items'>) => o.id)
       let items: OrderItem[] = []
       if (ids.length > 0) { const { data: itemData } = await supabase.from('order_items').select('*').in('order_id', ids); items = itemData || [] }
-      const enriched = (orderData || []).map((o: Order) => ({ ...o, items: items.filter(i => i.order_id === o.id) }))
+      const enriched: Order[] = (orderData || []).map((o: Omit<Order, 'items'>) => ({ ...o, items: items.filter(i => i.order_id === o.id) }))
       if (silent && prevIdsRef.current.size > 0) {
-        const newOrders = enriched.filter((o: Order) => !prevIdsRef.current.has(o.id) && o.status === 'pending')
+        const newOrders = enriched.filter((o) => !prevIdsRef.current.has(o.id) && o.status === 'pending')
         if (newOrders.length > 0) {
           if (soundEnabledRef.current) handleStartRinging()
           const cfg = printerConfigRef.current
           if (cfg.autoprint && cfg.connection !== 'none') for (const o of newOrders) void printOrder(o, cfg)
         }
       }
-      prevIdsRef.current = new Set(enriched.map((o: Order) => o.id)); setOrders(enriched); setLastUpdate(new Date())
+      prevIdsRef.current = new Set(enriched.map((o) => o.id)); setOrders(enriched); setLastUpdate(new Date())
     } catch (err) { console.error(err); if (!silent) toast.error('Erro ao carregar pedidos') }
     finally { if (!silent) setLoading(false) }
   }, [restaurantId, handleStartRinging])
@@ -266,7 +267,7 @@ export function OrdersDashboard({ restaurantId }: OrdersDashboardProps) {
                 <div className="flex gap-2"><MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" /><span>{order.address}{order.neighborhood ? ` — ${order.neighborhood}` : ''}</span></div>
                 <div className="flex gap-2"><CreditCard className="mt-0.5 h-4 w-4 text-muted-foreground" /><span>{PAYMENT_LABEL[order.payment_method] || order.payment_method}</span></div>
               </div>
-              <div className="rounded-lg bg-muted/40 p-3"><div className="space-y-1.5">{order.items?.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span>{item.quantity}× {item.product_name}</span><span>{formatBRL(item.quantity * item.unit_price)}</span></div>)}</div><div className="mt-3 flex justify-between border-t border-border pt-3 font-semibold"><span>Total</span><span>{formatBRL(order.total)}</span></div></div>
+              <div className="rounded-lg bg-muted/40 p-3"><div className="space-y-1.5">{order.items.map(item => <div key={item.id} className="flex justify-between gap-3 text-sm"><span>{item.quantity}× {item.product_name}</span><span>{formatBRL(item.quantity * item.unit_price)}</span></div>)}</div><div className="mt-3 flex justify-between border-t border-border pt-3 font-semibold"><span>Total</span><span>{formatBRL(order.total)}</span></div></div>
               {order.notes && <p className="rounded-md bg-accent px-3 py-2 text-sm"><strong>Observação:</strong> {order.notes}</p>}
               <div className="flex flex-wrap gap-2">
                 {next && <Button onClick={() => void updateStatus(order)}>{STATUS_MAP[next].icon}<span className="ml-2">Marcar como {STATUS_MAP[next].label}</span></Button>}
