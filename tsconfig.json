@@ -29,8 +29,7 @@
     "allowUnreachableCode": true,
     "allowUnusedLabels": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "@blinkdotnew/ui": ["./src/components/ui/blink-compat.tsx"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"],
