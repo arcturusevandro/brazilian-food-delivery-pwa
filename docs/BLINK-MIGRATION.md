@@ -1,54 +1,36 @@
-# Blink Decoupling Plan
+# Blink Decoupling — Completed
 
-This document tracks the verified, incremental migration away from Blink-managed dependencies. Changes must preserve working behavior and be validated before the next phase.
+The application has completed its migration away from Blink-managed runtime dependencies.
 
-## Verified state
+## Current verified state
 
-- Application data/auth flows use Supabase directly in core customer/admin areas.
-- `@blinkdotnew/sdk` is isolated in `src/blink/client.ts`; no verified application import of that client was found during the 2026-09-07 audit.
-- `@blinkdotnew/ui` is still broadly used by the rendered application and must not be removed in one step.
-- Blink-specific visual-editor/build tooling remains in the repository.
+- Core application data and authentication flows use Supabase directly.
+- No `@blinkdotnew/*` package is declared in `package.json`.
+- No Blink UI stylesheet or Tailwind scan path is required.
+- Vite and TypeScript aliases no longer redirect `@blinkdotnew/ui` imports.
+- The customer ordering flow, admin workflow, CI pipeline and Vercel deployment were validated after the migration.
+- The production merge was completed through PR #3 on 2026-09-07.
 
-## Migration phases
+## Local compatibility names
 
-### Phase 1 — Security baseline — completed
-- Stop tracking `.env`.
-- Ignore local environment files.
-- Keep `.env.example` without real values.
+Some local files may still contain historical names such as `blink-compat` or `BlinkClientBoundary`. These files are local React utilities and do not connect to Blink services. They should be treated as naming cleanup targets only, not external dependencies.
 
-### Phase 2 — Isolated Blink SDK — candidate
-Before deletion, run repository-wide reference checks and a clean install/build. If still unused:
-- remove `src/blink/client.ts`;
-- remove `@blinkdotnew/sdk` from dependencies;
-- regenerate the lockfile with the project package manager;
-- run build and functional smoke tests.
+## Post-migration maintenance rules
 
-### Phase 3 — Blink editor / hosting tooling
-After confirming the current deployment no longer depends on Blink hosting/editor behavior:
-- remove the Blink visual-editor Vite plugin and its source file;
-- replace/remove Blink-specific static-build finalization;
-- verify production routing, assets and PWA behavior on the actual deployment target.
+1. Do not introduce new `@blinkdotnew/*` dependencies or service calls.
+2. Keep customer/admin behavior unchanged when renaming local compatibility components.
+3. Run typecheck, JavaScript lint, CSS lint, service-worker syntax checks and build before merging changes.
+4. Validate customer ordering, admin status changes, notifications and printing when their related code changes.
+5. Keep Supabase schema, migrations and security policies versioned with the application.
+6. Keep environment secrets out of the repository.
 
-### Phase 4 — Blink UI
-Migrate incrementally, not as a bulk replacement:
-1. establish local/shared UI primitives;
-2. replace low-risk primitives first (Button, Input, Label, Badge, Skeleton);
-3. replace cards, tabs, dialogs/toasts and switches;
-4. replace shell/sidebar/provider dependencies;
-5. remove Blink UI stylesheet and Tailwind scan path;
-6. remove `@blinkdotnew/ui` only after repository-wide reference checks return none.
+## Outstanding technical-hardening work
 
-Each UI batch requires responsive and visual QA plus customer/admin flow checks.
+The Blink migration itself is complete. Remaining work belongs to general project hardening, especially:
 
-### Phase 5 — Final verification
-- no `@blinkdotnew/*` imports or dependencies;
-- no Blink project IDs/keys/fallbacks;
-- clean install, lint/typecheck/build where configured;
-- customer ordering smoke test;
-- admin authentication and management smoke test;
-- password reset test;
-- PWA/service-worker sanity check;
-- production deployment verification.
-
-## Safety rule
-Do not delete a dependency merely because it appears legacy. Verify references, replace behavior, test the rendered application, then remove it.
+- make the Supabase schema reproducible from versioned migrations;
+- review checkout price validation and RLS against the live database;
+- keep PWA/offline caching and Firebase messaging on a single service worker;
+- make dependency installation deterministic with a committed lockfile;
+- protect `main` with required CI checks;
+- gradually strengthen TypeScript strictness and add automated behavioral tests.
