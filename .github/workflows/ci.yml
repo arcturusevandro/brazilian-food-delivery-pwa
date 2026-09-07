@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - refactor/blink-ui-migration
       - audit/post-migration-hardening-2026-09-07
   pull_request:
     branches:
@@ -28,7 +27,7 @@ jobs:
           bun-version: 1.4.2
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Typecheck
         run: bun run lint:types
