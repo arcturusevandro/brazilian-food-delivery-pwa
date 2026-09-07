@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
 import { useRestaurant } from '@/hooks/useRestaurant'
 import { supabase } from '@/lib/supabase'
-import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@blinkdotnew/ui'
+import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@/components/ui/blink-compat'
 import { LogOut, Package, Pencil, Clock, Truck, Printer, Power, Settings, BarChart2 } from 'lucide-react'
 import { LoginForm } from '@/components/admin/LoginForm'
 import { OrdersDashboard } from '@/components/admin/OrdersDashboard'
@@ -143,11 +143,9 @@ function AdminContent() {
     setToggling(true)
     try {
       if (!restaurant.is_open) {
-        // Abre manualmente — reseta override para voltar ao automático
         await enableRestaurant(restaurant.id)
         toast.success('Restaurante aberto! Horário automático ativado.')
       } else {
-        // Fecha manualmente — ativa override
         await toggleRestaurantManual(restaurant.id, restaurant.is_open)
         toast.success('Restaurante fechado manualmente.')
       }
@@ -159,14 +157,10 @@ function AdminContent() {
     }
   }
 
-  // Título dinâmico
   useEffect(() => {
-    if (restaurant) {
-      document.title = `Admin · ${restaurant.name}`
-    }
+    if (restaurant) document.title = `Admin · ${restaurant.name}`
   }, [restaurant])
 
-  // Hook de horário automático
   useBusinessHours(restaurant, async () => {
     const { data } = await supabase.auth.getSession()
     if (data.session?.user) refetch(data.session.user)
@@ -182,26 +176,11 @@ function AdminContent() {
         <div className="flex items-center justify-between px-4 sm:px-6 h-14 max-w-6xl mx-auto">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">SE</div>
-            <div>
-              <h1 className="text-sm font-semibold">{restaurant.name}</h1>
-              <p className="text-xs text-muted-foreground">Painel Administrativo</p>
-            </div>
+            <div><h1 className="text-sm font-semibold">{restaurant.name}</h1><p className="text-xs text-muted-foreground">Painel Administrativo</p></div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant={restaurant.is_open ? 'outline' : 'default'}
-              size="sm"
-              onClick={handleToggleOpen}
-              disabled={toggling}
-              className={`gap-1.5 text-xs ${restaurant.is_open ? 'border-green-500 text-green-600 hover:bg-green-50' : 'bg-destructive hover:bg-destructive/90'}`}
-            >
-              <Power className="h-3.5 w-3.5" />
-              {toggling ? '...' : restaurant.is_open ? 'Aberto' : 'Fechado'}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
+            <Button variant={restaurant.is_open ? 'outline' : 'default'} size="sm" onClick={handleToggleOpen} disabled={toggling} className={`gap-1.5 text-xs ${restaurant.is_open ? 'border-green-500 text-green-600 hover:bg-green-50' : 'bg-destructive hover:bg-destructive/90'}`}><Power className="h-3.5 w-3.5" />{toggling ? '...' : restaurant.is_open ? 'Aberto' : 'Fechado'}</Button>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Sair</span></Button>
           </div>
         </div>
       </header>
@@ -209,69 +188,23 @@ function AdminContent() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         <Tabs defaultValue="orders">
           <TabsList className="w-full justify-start gap-1 overflow-x-auto border-b border-border rounded-none bg-transparent p-0 h-auto">
-            <TabsTrigger value="orders" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              <Package className="h-4 w-4" /> Pedidos
-            </TabsTrigger>
-            <TabsTrigger value="menu" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              <Pencil className="h-4 w-4" /> Cardápio
-            </TabsTrigger>
-            <TabsTrigger value="delivery" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              <Truck className="h-4 w-4" /> Entrega
-            </TabsTrigger>
-            <TabsTrigger value="hours" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              <Clock className="h-4 w-4" /> Horários
-            </TabsTrigger>
-            <TabsTrigger value="printer" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              <Printer className="h-4 w-4" /> Impressora
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              <BarChart2 className="h-4 w-4" /> Relatórios
-            </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              <Clock className="h-4 w-4" /> Histórico
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              <Settings className="h-4 w-4" /> Configurações
-            </TabsTrigger>
+            <TabsTrigger value="orders" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Package className="h-4 w-4" /> Pedidos</TabsTrigger>
+            <TabsTrigger value="menu" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Pencil className="h-4 w-4" /> Cardápio</TabsTrigger>
+            <TabsTrigger value="delivery" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Truck className="h-4 w-4" /> Entrega</TabsTrigger>
+            <TabsTrigger value="hours" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Clock className="h-4 w-4" /> Horários</TabsTrigger>
+            <TabsTrigger value="printer" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Printer className="h-4 w-4" /> Impressora</TabsTrigger>
+            <TabsTrigger value="reports" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><BarChart2 className="h-4 w-4" /> Relatórios</TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Clock className="h-4 w-4" /> Histórico</TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Settings className="h-4 w-4" /> Configurações</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="orders" className="mt-6">
-            <OrdersDashboard restaurantId={restaurant.id} />
-          </TabsContent>
-
-          <TabsContent value="menu" className="mt-6">
-            <MenuManager restaurantId={restaurant.id} />
-          </TabsContent>
-
-          <TabsContent value="delivery" className="mt-6">
-            <DeliverySettings restaurantId={restaurant.id} />
-          </TabsContent>
-
-          <TabsContent value="hours" className="mt-6">
-            <BusinessHours restaurantId={restaurant.id} />
-          </TabsContent>
-
-          <TabsContent value="printer" className="mt-6">
-            <PrinterSettings />
-          </TabsContent>
-
-          <TabsContent value="reports" className="mt-6">
-            <Reports restaurantId={restaurant.id} />
-          </TabsContent>
-
-          <TabsContent value="history" className="mt-6">
-            <OrderHistory restaurantId={restaurant.id} />
-          </TabsContent>
-
-          <TabsContent value="settings" className="mt-6">
-            <RestaurantSettings
-              restaurant={restaurant}
-              onUpdated={async () => {
-                const { data } = await supabase.auth.getSession()
-                if (data.session?.user) refetch(data.session.user)
-              }}
-            />
-          </TabsContent>
+          <TabsContent value="orders" className="mt-6"><OrdersDashboard restaurantId={restaurant.id} /></TabsContent>
+          <TabsContent value="menu" className="mt-6"><MenuManager restaurantId={restaurant.id} /></TabsContent>
+          <TabsContent value="delivery" className="mt-6"><DeliverySettings restaurantId={restaurant.id} /></TabsContent>
+          <TabsContent value="hours" className="mt-6"><BusinessHours restaurantId={restaurant.id} /></TabsContent>
+          <TabsContent value="printer" className="mt-6"><PrinterSettings /></TabsContent>
+          <TabsContent value="reports" className="mt-6"><Reports restaurantId={restaurant.id} /></TabsContent>
+          <TabsContent value="history" className="mt-6"><OrderHistory restaurantId={restaurant.id} /></TabsContent>
+          <TabsContent value="settings" className="mt-6"><RestaurantSettings restaurant={restaurant} onUpdated={async () => { const { data } = await supabase.auth.getSession(); if (data.session?.user) refetch(data.session.user) }} /></TabsContent>
         </Tabs>
       </main>
     </div>
