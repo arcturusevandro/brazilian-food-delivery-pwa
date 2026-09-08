@@ -1,48 +1,53 @@
 # Brazilian Food Delivery PWA
 
-Plataforma web desenvolvida para **digitalizar e automatizar operações de delivery**, conectando experiência do cliente, processamento de pedidos, checkout, dados e fluxos operacionais em uma única aplicação.
-
-O projeto é utilizado como ambiente prático para desenvolvimento e validação de soluções que conectam **processos de negócio, automação, dados e tecnologia**.
-
-## Objetivo
-
-Estruturar uma experiência digital de pedidos e, ao mesmo tempo, trabalhar os processos necessários para que a operação seja organizada, rastreável e preparada para evolução.
-
-O desenvolvimento envolve análise do fluxo operacional, definição de regras de negócio, estruturação da aplicação, integrações, testes, identificação de falhas e melhoria contínua.
-
-## Tecnologias
-
-Entre as principais tecnologias e ferramentas utilizadas no projeto estão:
-
-- React;
-- TypeScript;
-- Vite;
-- Supabase;
-- PostgreSQL / SQL;
-- Firebase;
-- TanStack Query e Router;
-- Tailwind CSS;
-- Git e GitHub.
-
-## Aspectos trabalhados
-
-- estruturação de fluxos de pedidos;
-- interface web responsiva;
-- tratamento e persistência de dados;
-- checkout e fluxos operacionais;
-- integração entre aplicação e serviços;
-- regras de negócio;
-- validação de dados;
-- testes funcionais e correção de falhas;
-- versionamento e evolução contínua da aplicação.
-
-## Abordagem
-
-O projeto parte da compreensão da operação antes da automação: quais informações precisam circular, quais regras precisam ser respeitadas, onde existem atividades manuais e como a tecnologia pode organizar melhor o processo.
+Plataforma web autoral para digitalizar e automatizar operações de delivery, conectando cardápio, checkout, processamento de pedidos, painel administrativo, entrega e notificações em uma única aplicação.
 
 ## Status
 
-Projeto em desenvolvimento e evolução contínua.
+**Produção auditada e operacional — setembro de 2026.**
+
+O projeto passou por migração de dependências externas, hardening do Supabase, reconciliação de migrations, revisão da PWA/service worker e validação de CI. O checkout utiliza cálculo server-side por RPC e os pedidos são protegidos por RLS.
+
+## Tecnologias
+
+- React + TypeScript;
+- Vite / TanStack Router e Query;
+- Supabase + PostgreSQL;
+- Firebase Cloud Messaging;
+- Tailwind CSS;
+- Bun;
+- GitHub Actions;
+- Vercel.
+
+## Fluxo principal
+
+Cliente → carrinho → autenticação anônima Supabase → RPC `create_order` → `orders` / `order_items` → painel administrativo → atualização de status → entrega.
+
+A RPC recalcula preços, adicionais, taxa de entrega e total no PostgreSQL; o valor enviado pelo navegador não é tratado como fonte autoritativa.
+
+## Segurança e backend
+
+- RLS ativo nas tabelas expostas auditadas;
+- criação direta de `orders`/`order_items` pelo cliente bloqueada;
+- checkout via RPC segura;
+- permissões administrativas vinculadas ao proprietário do restaurante;
+- migrations de produção versionadas em `supabase/migrations/`;
+- snapshots antigos isolados em `supabase/audit/`;
+- segredos não devem ser versionados.
+
+Veja `supabase/README.md` para recuperação e regras de versionamento do backend.
+
+## Qualidade e entrega
+
+O CI usa instalação congelada pelo `bun.lock` e valida TypeScript, ESLint, CSS, sintaxe do service worker e build. A PWA utiliza um único service worker para cache/offline e Firebase Messaging.
+
+## Recovery point auditado
+
+Estado funcional/hardening consolidado na `main` em setembro de 2026. Para recuperação, preserve o histórico Git e aplique somente migrations ativas e reconciliadas; não use snapshots em `supabase/audit/` como migrations.
+
+## Governança pendente
+
+A proteção administrativa da branch `main` deve exigir PR e CI verde quando habilitada nas configurações do GitHub. Essa configuração é externa ao código do repositório.
 
 ---
 
