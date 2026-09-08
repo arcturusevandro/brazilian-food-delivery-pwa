@@ -298,7 +298,7 @@ function ProductCard({ product, qty, hasAddons, open, onClick }: { product: Prod
         {product.description && <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{product.description}</p>}
         <div className="mt-1.5 flex items-center justify-between">
           <span className="text-sm font-bold text-primary">{formatBRL(product.price)}</span>
-          {open ? <button onClick={onClick} className="flex items-center gap-1 h-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all active:scale-90 px-2.5"><Plus className="h-3.5 w-3.5" />{qty > 0 && <span className="text-xs font-semibold">{qty}</span>}</button> : <Badge variant="destructive" className="text-xs">Indisponível</Badge>}
+          {open ? <button type="button" onClick={onClick} aria-label={`Adicionar ${product.name} ao carrinho`} title={`Adicionar ${product.name} ao carrinho`} className="flex items-center gap-1 h-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all active:scale-90 px-2.5"><Plus className="h-3.5 w-3.5" aria-hidden="true" />{qty > 0 && <span className="text-xs font-semibold">{qty}</span>}</button> : <Badge variant="destructive" className="text-xs">Indisponível</Badge>}
         </div>
         {hasAddons && open && <p className="mt-1 text-[10px] text-muted-foreground">Personalizável</p>}
       </div>
