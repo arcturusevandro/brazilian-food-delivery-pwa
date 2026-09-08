@@ -25,15 +25,10 @@ export const firebaseApp = getApps().length
 let messagingInstance: Messaging | null = null
 
 export async function getFirebaseMessaging(): Promise<Messaging | null> {
-  if (typeof window === 'undefined') {
-    return null
-  }
+  if (typeof window === 'undefined') return null
 
   const supported = await isSupported()
-
-  if (!supported) {
-    return null
-  }
+  if (!supported) return null
 
   if (!messagingInstance) {
     messagingInstance = getMessaging(firebaseApp)
@@ -42,36 +37,19 @@ export async function getFirebaseMessaging(): Promise<Messaging | null> {
   return messagingInstance
 }
 
-export async function requestFirebaseNotificationToken(): Promise<
-  string | null
-> {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  if (!('Notification' in window)) {
-    return null
-  }
-
-  if (!('serviceWorker' in navigator)) {
-    return null
-  }
+export async function requestFirebaseNotificationToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  if (!('Notification' in window)) return null
+  if (!('serviceWorker' in navigator)) return null
 
   const permission = await Notification.requestPermission()
-
-  if (permission !== 'granted') {
-    return null
-  }
+  if (permission !== 'granted') return null
 
   const messaging = await getFirebaseMessaging()
+  if (!messaging) return null
 
-  if (!messaging) {
-    return null
-  }
-
-  const registration = await navigator.serviceWorker.register(
-    '/firebase-messaging-sw.js',
-  )
+  const registration = await navigator.serviceWorker.register('/sw.js')
+  await navigator.serviceWorker.ready
 
   const token = await getToken(messaging, {
     vapidKey: FIREBASE_VAPID_KEY,
