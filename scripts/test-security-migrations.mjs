@@ -32,6 +32,7 @@ test('production security migrations remain versioned', () => {
     'optimize_rls_and_foreign_key_indexes',
     'block_anonymous_admin_and_storage_access',
     'optimize_permanent_user_policy_checks',
+    'restore_authenticated_owns_restaurant_execute',
   ]
 
   for (const name of required) {
@@ -40,6 +41,15 @@ test('production security migrations remain versioned', () => {
       `Required production migration is missing: ${name}`,
     )
   }
+})
+
+test('owner helper remains callable only by authenticated application users and service role', () => {
+  const sql = migration('restore_authenticated_owns_restaurant_execute')
+
+  assert.match(sql, /revoke\s+all[\s\S]*from\s+public/)
+  assert.match(sql, /revoke\s+all[\s\S]*from\s+anon/)
+  assert.match(sql, /grant\s+execute[\s\S]*to\s+authenticated/)
+  assert.match(sql, /grant\s+execute[\s\S]*to\s+service_role/)
 })
 
 test('checkout remains server-authoritative and unavailable to anon role', () => {
