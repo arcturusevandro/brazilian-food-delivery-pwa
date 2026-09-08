@@ -12,6 +12,7 @@ Migrations de hardening reconciliadas em 2026-09-08:
 - `20260907233640_harden_public_configuration_tables.sql`;
 - `20260908000959_lock_down_orders_and_order_items.sql`;
 - `20260908003609_restrict_owns_restaurant_rpc.sql`.
+- `20260908203357_restore_authenticated_owns_restaurant_execute.sql`.
 
 O antigo `setup.sql` foi arquivado em `audit/legacy/setup.sql`. Ele é apenas um snapshot histórico e **não deve ser usado para reconstruir o banco atual**.
 
@@ -21,7 +22,7 @@ O checkout atual usa a RPC `public.create_order`. O cliente autentica anonimamen
 
 `orders` e `order_items` possuem RLS ativo. Inserts diretos pelo cliente foram removidos; a criação ocorre pela RPC. Leitura/atualização administrativa permanece limitada pelas políticas de propriedade do restaurante.
 
-A função auxiliar `public.owns_restaurant(uuid)` não precisa ser exposta como RPC ao usuário autenticado e teve `EXECUTE` direto revogado; ela continua disponível para o contexto interno necessário às políticas.
+A função auxiliar `public.owns_restaurant(uuid)` é usada pelas políticas RLS e, por isso, precisa de `EXECUTE` para o papel `authenticated`. O acesso permanece revogado para `anon` e `public`; a própria função compara `auth.uid()` com o proprietário do restaurante.
 
 A função `create_order` permanece intencionalmente `SECURITY DEFINER` e executável pelo papel `authenticated`, pois usuários de checkout usam autenticação anônima do Supabase. Qualquer mudança nesse desenho exige novo teste de checkout antes de produção.
 
