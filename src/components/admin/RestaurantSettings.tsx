@@ -22,11 +22,34 @@ export function RestaurantSettings({
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    setName(restaurant.name)
-    setPhone(restaurant.phone || '')
-    setAddress(restaurant.address || '')
-    setLogoUrl(restaurant.logo_url || '')
-    setIsOpen(restaurant.is_open)
+    let cancelled = false
+
+    const syncForm = (current: Restaurant) => {
+      if (cancelled) return
+      setName(current.name)
+      setPhone(current.phone || '')
+      setAddress(current.address || '')
+      setLogoUrl(current.logo_url || '')
+      setIsOpen(current.is_open)
+    }
+
+    syncForm(restaurant)
+
+    const loadLatestRestaurant = async () => {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('id, name, slug, owner_id, logo_url, phone, address, is_open, manual_override, created_at')
+        .eq('id', restaurant.id)
+        .single()
+
+      if (!error && data) syncForm(data as Restaurant)
+    }
+
+    void loadLatestRestaurant()
+
+    return () => {
+      cancelled = true
+    }
   }, [restaurant])
 
   const handleSave = async () => {
