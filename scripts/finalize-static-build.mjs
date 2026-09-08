@@ -1,10 +1,10 @@
 /**
- * Flatten the TanStack Start build into a static `dist/` that Blink hosting serves.
+ * Flatten the TanStack Start build into a static `dist/` that static hosting serves.
  *
  * TanStack Start's `vite build` (configured with `build.outDir: '.vite-out'`)
  * emits:
  *   .vite-out/client/   ← prerendered HTML + assets (what we want, STATIC)
- *   .vite-out/server/   ← SSR Nitro server (NOT used by Blink's static S3 hosting)
+ *   .vite-out/server/   ← SSR Nitro server (NOT used by the static hosting target)
  *
  * Blink uploads `dist/` and serves `dist/index.html` (see src/constants/publish.ts
  * BUILD_PATHS['vite-react'] = 'dist'). So we copy `.vite-out/client/*` up into a
