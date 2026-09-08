@@ -1,5 +1,5 @@
 // ── Impressão térmica — Bluetooth + USB + navegador/WiFi ─────────
-// Mantém o comportamento operacional original sem dependências Blink.
+// Mantém o comportamento operacional original sem dependências externas de plataforma.
 
 export interface PrinterConfig {
   connection: 'bluetooth' | 'usb' | 'wifi' | 'none'

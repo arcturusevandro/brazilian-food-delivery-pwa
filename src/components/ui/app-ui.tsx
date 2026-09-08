@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { Menu } from 'lucide-react'
-import { Toaster as HotToaster } from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 
 export { Button } from '@/components/ui/button'
@@ -15,13 +14,6 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 export { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
-export function BlinkUIProvider({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
-}
-
-export function Toaster() {
-  return <HotToaster position="top-right" />
-}
 
 type AppShellContextValue = { mobileOpen: boolean; setMobileOpen: (open: boolean) => void }
 const AppShellContext = React.createContext<AppShellContextValue | null>(null)

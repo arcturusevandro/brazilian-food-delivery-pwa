@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Button, Input, Badge, Skeleton, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, Select, SelectTrigger, SelectContent, SelectItem, SelectValue, Textarea, Label, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/blink-compat'
+import { Button, Input, Badge, Skeleton, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, Select, SelectTrigger, SelectContent, SelectItem, SelectValue, Textarea, Label, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/app-ui'
 import { Plus, Pencil, Trash2, Package, X, Search, Upload, Image as ImageIcon, ShoppingBag } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'

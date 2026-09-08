@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect, useCallback } from 'react'
-import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
+import { ClientBoundary } from '@/components/ClientBoundary'
 import { useRestaurant } from '@/hooks/useRestaurant'
 import { supabase } from '@/lib/supabase'
-import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@/components/ui/blink-compat'
+import { Button, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, Input, Card, CardHeader, CardTitle, CardContent, Label } from '@/components/ui/app-ui'
 import { LogOut, Package, Pencil, Clock, Truck, Printer, Power, Settings, BarChart2 } from 'lucide-react'
 import { LoginForm } from '@/components/admin/LoginForm'
 import { OrdersDashboard } from '@/components/admin/OrdersDashboard'
@@ -23,10 +23,10 @@ export const Route = createFileRoute('/admin')({
 
 function AdminPage() {
   return (
-    <BlinkClientBoundary fallback={<AdminSkeleton />}>
+    <ClientBoundary fallback={<AdminSkeleton />}>
       <HotToaster position="top-right" toastOptions={{ duration: 3000 }} />
       <AdminContent />
-    </BlinkClientBoundary>
+    </ClientBoundary>
   )
 }
 
