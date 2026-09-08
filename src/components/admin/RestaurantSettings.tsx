@@ -39,7 +39,7 @@ export function RestaurantSettings({
         .replace(/-+/g, '-')
         .trim()
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('restaurants')
         .update({
           name: name.trim(),
