@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { Menu } from 'lucide-react'
-import { Toaster as HotToaster } from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 
 export { Button } from '@/components/ui/button'
