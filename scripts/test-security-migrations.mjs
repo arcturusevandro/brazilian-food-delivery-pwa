@@ -46,8 +46,7 @@ test('checkout remains server-authoritative and unavailable to anon role', () =>
   const sql = migration('add_secure_order_rpc_and_lock_push_trigger')
 
   assert.match(sql, /security\s+definer/)
-  assert.match(sql, /revoke\s+execute[\s\S]*from\s+public/)
-  assert.match(sql, /revoke\s+execute[\s\S]*from\s+anon/)
+  assert.match(sql, /revoke\s+all[\s\S]*from\s+public\s*,\s*anon/)
   assert.match(sql, /grant\s+execute[\s\S]*to\s+authenticated/)
   assert.match(sql, /from\s+public\.products/)
   assert.match(sql, /insert\s+into\s+public\.orders/)
@@ -59,7 +58,7 @@ test('orders and order items keep RLS with no direct anonymous inserts', () => {
 
   for (const table of ['orders', 'order_items']) {
     assert.match(sql, new RegExp(`alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`))
-    assert.match(sql, new RegExp(`revoke\\s+insert[\\s\\S]*on\\s+table\\s+public\\.${table}[\\s\\S]*from\\s+anon`))
+    assert.match(sql, new RegExp(`revoke\\s+all\\s+on\\s+table\\s+public\\.${table}\\s+from\\s+anon`))
   }
 })
 
