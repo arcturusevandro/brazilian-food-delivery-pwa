@@ -2,55 +2,43 @@
 
 Este diretório documenta o estado versionado do backend do Brazilian Food Delivery PWA.
 
-## Estado atual
+## Fonte autoritativa
 
-`setup.sql` é um arquivo legado e **não deve ser tratado como fonte autoritativa do banco atual**. Ele representa uma versão antiga e reduzida do esquema e não contém toda a estrutura que a aplicação em produção utiliza hoje.
+O histórico ativo está em `supabase/migrations/` e deve acompanhar exatamente o histórico registrado no projeto Supabase de produção `tnmxsmllorijtomwqxmp`.
 
-A aplicação atual depende, entre outros elementos, de:
+Migrations de hardening reconciliadas em 2026-09-08:
 
-- `restaurants` com `manual_override`;
-- `categories`;
-- `products`;
-- `product_addons`;
-- `combos` / estrutura relacionada;
-- `business_hours`;
-- `delivery_settings`;
-- `delivery_zones`;
-- `orders` com `delivery_fee` e `neighborhood`;
-- `order_items`;
-- `push_subscriptions`;
-- funções/triggers relacionados a notificações e checkout.
+- `20260907233448_add_secure_order_rpc_and_lock_push_trigger.sql`;
+- `20260907233640_harden_public_configuration_tables.sql`;
+- `20260908000959_lock_down_orders_and_order_items.sql`;
+- `20260908003609_restrict_owns_restaurant_rpc.sql`.
 
-## Snapshot auditado de 2026-09-02
+O antigo `setup.sql` foi arquivado em `audit/legacy/setup.sql`. Ele é apenas um snapshot histórico e **não deve ser usado para reconstruir o banco atual**.
 
-Os arquivos em `audit/2026-09-02/` foram preservados a partir de uma auditoria anterior do banco real:
+## Checkout e segurança
 
-- `baseline_schema.sql`: snapshot do esquema observado naquela data;
-- `hardening_candidate.sql`: proposta de RLS, grants mínimos, Storage e RPC `create_order` com cálculo de preços no servidor.
+O checkout atual usa a RPC `public.create_order`. O cliente autentica anonimamente no Supabase Auth e envia identificadores/quantidades; a função valida o restaurante e os produtos e recalcula preços, adicionais, entrega e total no PostgreSQL. O navegador não é a fonte autoritativa dos valores do pedido.
 
-Esses arquivos são **referência histórica**, não migrations ativas. Não aplique nenhum deles diretamente em produção sem comparar antes com o banco atual.
+`orders` e `order_items` possuem RLS ativo. Inserts diretos pelo cliente foram removidos; a criação ocorre pela RPC. Leitura/atualização administrativa permanece limitada pelas políticas de propriedade do restaurante.
 
-## Por que não estão em `migrations/`
+A função auxiliar `public.owns_restaurant(uuid)` não precisa ser exposta como RPC ao usuário autenticado e teve `EXECUTE` direto revogado; ela continua disponível para o contexto interno necessário às políticas.
 
-A aplicação e o Supabase evoluíram depois de 2026-09-02. Colocar um snapshot antigo em `migrations/` poderia fazer uma ferramenta ou desenvolvedor interpretá-lo como uma mudança pronta para execução. Mantê-lo em `audit/` preserva a evidência sem criar esse risco.
+A função `create_order` permanece intencionalmente `SECURITY DEFINER` e executável pelo papel `authenticated`, pois usuários de checkout usam autenticação anônima do Supabase. Qualquer mudança nesse desenho exige novo teste de checkout antes de produção.
 
-## Procedimento correto para tornar o backend reproduzível
+## Snapshots históricos
 
-1. Exportar/inspecionar o esquema **atual** do Supabase de produção, incluindo tabelas, colunas, constraints, índices, funções, triggers, políticas RLS, grants, Storage e Edge Functions relacionadas.
-2. Comparar esse estado com `audit/2026-09-02/baseline_schema.sql` e com o frontend atual.
-3. Gerar uma baseline limpa ou migrations incrementais que reproduzam exatamente o estado aprovado.
-4. Validar as migrations em um projeto Supabase descartável/preview.
-5. Confirmar RLS e permissões com usuários `anon` e `authenticated`.
-6. Validar a RPC de checkout em preview antes de alterar o frontend para depender dela.
-7. Somente depois aplicar mudanças ao ambiente de produção.
-8. Registrar futuras alterações exclusivamente por migrations versionadas.
+Os arquivos em `audit/2026-09-02/` são evidências da auditoria anterior (`baseline_schema.sql` e `hardening_candidate.sql`). Eles não são migrations ativas e não devem ser reaplicados automaticamente.
 
-## Checkout e integridade de preços
+## Recuperação / reconstrução
 
-O snapshot `hardening_candidate.sql` contém uma RPC `create_order` que recebe identificadores/quantidades e recalcula produtos, adicionais, taxa de entrega e total no PostgreSQL. Essa abordagem evita confiar em valores calculados pelo navegador.
+1. Use `supabase/migrations/` como histórico de mudanças versionadas.
+2. Compare a lista local com o histórico de migrations do projeto Supabase antes de qualquer aplicação manual.
+3. Nunca reaplique snapshots de `audit/` em produção.
+4. Valide novas migrations em ambiente descartável/preview quando o plano permitir; caso contrário, use mudanças pequenas, reversíveis e verificações entre etapas.
+5. Depois de DDL, rode os Security Advisors e registre warnings intencionais.
+6. Valide checkout, painel, status de pedidos e push após mudanças de autenticação/RLS/RPC.
+7. Nunca versione service-role keys, senhas, webhook secrets ou outros segredos.
 
-O frontend atual ainda não deve ser alterado para depender dessa RPC até confirmarmos que a função equivalente está disponível e validada no Supabase real. Backend e frontend devem ser promovidos juntos nessa mudança.
+## Estado auditado
 
-## Regra de segurança
-
-Nunca inclua service-role keys, senhas, webhook secrets ou outros segredos nestes arquivos. Configuração pública do cliente deve usar variáveis de ambiente; segredos de backend devem permanecer no mecanismo de secrets/Vault apropriado.
+Em 2026-09-08, checkout via RPC, RLS de pedidos, grants, PWA/service worker, CI e histórico de migrations foram auditados. O Security Advisor não apresenta os erros críticos de RLS encontrados no início da auditoria. Warnings restantes devem ser avaliados conforme o desenho de autenticação anônima e as funções intencionalmente expostas.
