@@ -12,7 +12,7 @@ export function RestaurantSettings({
   onUpdated,
 }: {
   restaurant: Restaurant
-  onUpdated: () => void
+  onUpdated: () => void | Promise<void>
 }) {
   const [name, setName] = useState(restaurant.name)
   const [phone, setPhone] = useState(restaurant.phone || '')
@@ -39,7 +39,7 @@ export function RestaurantSettings({
         .replace(/-+/g, '-')
         .trim()
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('restaurants')
         .update({
           name: name.trim(),
@@ -50,10 +50,21 @@ export function RestaurantSettings({
           is_open: isOpen,
         })
         .eq('id', restaurant.id)
+        .select('*')
+        .single()
 
       if (error) throw error
+      if (!data) throw new Error('O Supabase não confirmou a atualização')
+
+      const updatedRestaurant = data as Restaurant
+      setName(updatedRestaurant.name)
+      setPhone(updatedRestaurant.phone || '')
+      setAddress(updatedRestaurant.address || '')
+      setLogoUrl(updatedRestaurant.logo_url || '')
+      setIsOpen(updatedRestaurant.is_open)
+
       toast.success('Configurações salvas!')
-      onUpdated()
+      await onUpdated()
     } catch (err: any) {
       toast.error(err.message || 'Erro ao salvar')
     } finally {

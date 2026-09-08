@@ -15,7 +15,7 @@ import { RestaurantSettings } from '@/components/admin/RestaurantSettings'
 import { Reports } from '@/components/admin/Reports'
 import { BusinessHours } from '@/components/admin/BusinessHours'
 import { useBusinessHours, toggleRestaurantManual, enableRestaurant } from '@/lib/useBusinessHours'
-import toast, { Toaster as HotToaster } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 
 export const Route = createFileRoute('/admin')({
   component: AdminPage,
@@ -24,7 +24,6 @@ export const Route = createFileRoute('/admin')({
 function AdminPage() {
   return (
     <ClientBoundary fallback={<AdminSkeleton />}>
-      <HotToaster position="top-right" toastOptions={{ duration: 3000 }} />
       <AdminContent />
     </ClientBoundary>
   )
@@ -98,6 +97,7 @@ function CreateRestaurantForm({ onCreated }: { onCreated: () => void }) {
 function AdminContent() {
   const [session, setSession] = useState<any>(null)
   const [authChecked, setAuthChecked] = useState(false)
+  const [activeTab, setActiveTab] = useState('orders')
   const { restaurant, loading: restaurantLoading, refetch } = useRestaurant()
 
   useEffect(() => {
@@ -186,7 +186,7 @@ function AdminContent() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-        <Tabs defaultValue="orders">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full justify-start gap-1 overflow-x-auto border-b border-border rounded-none bg-transparent p-0 h-auto">
             <TabsTrigger value="orders" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Package className="h-4 w-4" /> Pedidos</TabsTrigger>
             <TabsTrigger value="menu" className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"><Pencil className="h-4 w-4" /> Cardápio</TabsTrigger>
