@@ -21,7 +21,28 @@ async function uploadProductImage(file: File, restaurantId: string): Promise<str
   return data.publicUrl
 }
 
-function PhotoUpload({ value, onChange, restaurantId }: { value: string; onChange: (url: string) => void; restaurantId: string }) {
+const PRODUCT_IMAGES_PUBLIC_PATH = '/storage/v1/object/public/product-images/'
+
+function getProductImagePath(photoUrl: string, restaurantId: string): string | null {
+  try {
+    const pathname = new URL(photoUrl).pathname
+    const markerIndex = pathname.indexOf(PRODUCT_IMAGES_PUBLIC_PATH)
+    if (markerIndex === -1) return null
+    const objectPath = decodeURIComponent(pathname.slice(markerIndex + PRODUCT_IMAGES_PUBLIC_PATH.length))
+    return objectPath.startsWith(`${restaurantId}/`) ? objectPath : null
+  } catch {
+    return null
+  }
+}
+
+async function removeProductImage(photoUrl: string, restaurantId: string): Promise<string | null> {
+  const objectPath = getProductImagePath(photoUrl, restaurantId)
+  if (!objectPath) return null
+  const { error } = await supabase.storage.from('product-images').remove([objectPath])
+  return error?.message || null
+}
+
+function PhotoUpload({ value, onChange, onUploaded, restaurantId }: { value: string; onChange: (url: string) => void; onUploaded?: (url: string) => void; restaurantId: string }) {
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -32,7 +53,7 @@ function PhotoUpload({ value, onChange, restaurantId }: { value: string; onChang
     setUploading(true)
     try {
       const url = await uploadProductImage(file, restaurantId)
-      setPreview(url); onChange(url); toast.success('Foto enviada!')
+      setPreview(url); onChange(url); onUploaded?.(url); toast.success('Foto enviada!')
     } catch (err: any) { toast.error(err.message); setPreview(value) }
     finally { setUploading(false) }
   }
@@ -46,8 +67,8 @@ function PhotoUpload({ value, onChange, restaurantId }: { value: string; onChang
           {uploading && <div className="absolute inset-0 bg-background/70 flex items-center justify-center"><div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" /></div>}
           {!uploading && (
             <div className="absolute top-2 right-2 flex gap-1">
-              <button type="button" onClick={() => inputRef.current?.click()} className="flex h-7 w-7 items-center justify-center rounded-full bg-background/90 hover:bg-background shadow"><Upload className="h-3.5 w-3.5" /></button>
-              <button type="button" onClick={() => { setPreview(''); onChange('') }} className="flex h-7 w-7 items-center justify-center rounded-full bg-background/90 text-destructive hover:bg-background shadow"><X className="h-3.5 w-3.5" /></button>
+              <button type="button" aria-label="Trocar foto" onClick={() => inputRef.current?.click()} className="flex h-7 w-7 items-center justify-center rounded-full bg-background/90 hover:bg-background shadow"><Upload className="h-3.5 w-3.5" /></button>
+              <button type="button" aria-label="Remover foto" onClick={() => { setPreview(''); onChange('') }} className="flex h-7 w-7 items-center justify-center rounded-full bg-background/90 text-destructive hover:bg-background shadow"><X className="h-3.5 w-3.5" /></button>
             </div>
           )}
         </div>
@@ -110,22 +131,31 @@ export function MenuManager({ restaurantId }: { restaurantId: string }) {
     toast.success('Categoria removida!'); fetchData()
   }
 
-  const saveProduct = async (formData: Partial<Product>) => {
+  const saveProduct = async (formData: Partial<Product>): Promise<boolean> => {
     if (editingProduct) {
       const { error } = await supabase.from('products').update(formData).eq('id', editingProduct.id)
-      if (error) { toast.error('Erro ao atualizar produto'); return }
+      if (error) { toast.error(`Erro ao atualizar produto: ${error.message}`); return false }
+      if (editingProduct.photo_url && editingProduct.photo_url !== formData.photo_url) {
+        const imageError = await removeProductImage(editingProduct.photo_url, restaurantId)
+        if (imageError) toast.error(`Produto atualizado, mas a foto anterior não foi removida: ${imageError}`)
+      }
       toast.success('Produto atualizado!')
     } else {
       const { error } = await supabase.from('products').insert({ ...formData, restaurant_id: restaurantId })
-      if (error) { toast.error('Erro ao criar produto'); return }
+      if (error) { toast.error(`Erro ao criar produto: ${error.message}`); return false }
       toast.success('Produto adicionado!')
     }
     setProductDialogOpen(false); setEditingProduct(null); fetchData()
+    return true
   }
 
-  const deleteProduct = async (id: string) => {
-    const { error } = await supabase.from('products').delete().eq('id', id)
+  const deleteProduct = async (product: Product) => {
+    const { error } = await supabase.from('products').delete().eq('id', product.id)
     if (error) { toast.error('Erro ao remover produto'); return }
+    if (product.photo_url) {
+      const imageError = await removeProductImage(product.photo_url, restaurantId)
+      if (imageError) toast.error(`Produto removido, mas a foto não foi removida: ${imageError}`)
+    }
     toast.success('Produto removido!'); fetchData()
   }
 
@@ -177,16 +207,18 @@ export function MenuManager({ restaurantId }: { restaurantId: string }) {
   )
 }
 
-function ProductList({ products, categories, onEdit, onDelete, onToggle, onAddons, isCombo = false }: { products: Product[]; categories: Category[]; onEdit: (p: Product) => void; onDelete: (id: string) => void; onToggle: (p: Product) => void; onAddons?: (p: Product) => void; isCombo?: boolean }) {
+function ProductList({ products, categories, onEdit, onDelete, onToggle, onAddons, isCombo = false }: { products: Product[]; categories: Category[]; onEdit: (p: Product) => void; onDelete: (p: Product) => void; onToggle: (p: Product) => void; onAddons?: (p: Product) => void; isCombo?: boolean }) {
   if (products.length === 0) return <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed border-border rounded-lg"><Package className="h-10 w-10 text-muted-foreground/30 mb-2" /><p className="text-sm text-muted-foreground">Nenhum produto cadastrado</p></div>
-  return <div className="space-y-2">{products.map(product => { const category = categories.find(c => c.id === product.category_id); return <div key={product.id} className={cn('flex items-center gap-3 p-3 rounded-lg border border-border transition-colors', !product.available && 'opacity-50')}><div className="flex-shrink-0 h-12 w-12 rounded-lg bg-muted overflow-hidden flex items-center justify-center">{product.photo_url ? <img src={product.photo_url} alt={product.name} className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5 text-muted-foreground/40" />}</div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className="text-sm font-medium truncate">{product.name}</span>{category && <Badge variant="outline" className="text-xs shrink-0">{category.name}</Badge>}{!product.available && <Badge variant="secondary" className="text-xs shrink-0">Indisponível</Badge>}</div>{product.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{product.description}</p>}</div><span className="text-sm font-semibold shrink-0">{formatBRL(product.price)}</span>{!isCombo && onAddons && <Button size="sm" variant="outline" className="shrink-0 text-xs" onClick={() => onAddons(product)}>Adicionais</Button>}<Switch checked={product.available} onCheckedChange={() => onToggle(product)} /><Button size="sm" variant="ghost" onClick={() => onEdit(product)}><Pencil className="h-3.5 w-3.5" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete(product.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></div> })}</div>
+  return <div className="space-y-2">{products.map(product => { const category = categories.find(c => c.id === product.category_id); return <div key={product.id} className={cn('flex items-center gap-3 p-3 rounded-lg border border-border transition-colors', !product.available && 'opacity-50')}><div className="flex-shrink-0 h-12 w-12 rounded-lg bg-muted overflow-hidden flex items-center justify-center">{product.photo_url ? <img src={product.photo_url} alt={product.name} className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5 text-muted-foreground/40" />}</div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className="text-sm font-medium truncate">{product.name}</span>{category && <Badge variant="outline" className="text-xs shrink-0">{category.name}</Badge>}{!product.available && <Badge variant="secondary" className="text-xs shrink-0">Indisponível</Badge>}</div>{product.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{product.description}</p>}</div><span className="text-sm font-semibold shrink-0">{formatBRL(product.price)}</span>{!isCombo && onAddons && <Button size="sm" variant="outline" className="shrink-0 text-xs" onClick={() => onAddons(product)}>Adicionais</Button>}<Switch checked={product.available} onCheckedChange={() => onToggle(product)} /><Button size="sm" variant="ghost" onClick={() => onEdit(product)}><Pencil className="h-3.5 w-3.5" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete(product)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></div> })}</div>
 }
 
-function ProductFormDialog({ open, onOpenChange, product, categories, restaurantId, onSave }: { open: boolean; onOpenChange: (v: boolean) => void; product: Product | null; categories: Category[]; restaurantId: string; onSave: (d: Partial<Product>) => Promise<void> }) {
-  const [name, setName] = useState(''); const [description, setDescription] = useState(''); const [price, setPrice] = useState(''); const [categoryId, setCategoryId] = useState(''); const [photoUrl, setPhotoUrl] = useState(''); const [available, setAvailable] = useState(true); const [saving, setSaving] = useState(false)
-  useEffect(() => { if (product) { setName(product.name); setDescription(product.description || ''); setPrice(String(product.price)); setCategoryId(product.category_id || ''); setPhotoUrl(product.photo_url || ''); setAvailable(product.available) } else { setName(''); setDescription(''); setPrice(''); setCategoryId(''); setPhotoUrl(''); setAvailable(true) } }, [product, open])
-  const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (!name.trim() || !price) return; setSaving(true); await onSave({ name: name.trim(), description: description.trim() || null, price: parseFloat(price.replace(',', '.')), category_id: categoryId || null, photo_url: photoUrl || null, available, is_combo: false }); setSaving(false) }
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>{product ? 'Editar Produto' : 'Novo Produto'}</DialogTitle><DialogDescription>Preencha os dados do produto.</DialogDescription></DialogHeader><form onSubmit={handleSubmit} className="space-y-4"><PhotoUpload value={photoUrl} onChange={setPhotoUrl} restaurantId={restaurantId} /><div className="space-y-2"><Label>Nome *</Label><Input value={name} onChange={e => setName(e.target.value)} required /></div><div className="space-y-2"><Label>Descrição</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} /></div><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><Label>Preço (R$) *</Label><Input value={price} onChange={e => setPrice(e.target.value)} placeholder="29,90" required /></div><div className="space-y-2"><Label>Categoria</Label><Select value={categoryId} onValueChange={setCategoryId}><SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger><SelectContent><SelectItem value="">Nenhuma</SelectItem>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div></div><div className="flex items-center gap-2"><Switch checked={available} onCheckedChange={setAvailable} /><Label>Disponível para venda</Label></div><DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button></DialogFooter></form></DialogContent></Dialog>
+function ProductFormDialog({ open, onOpenChange, product, categories, restaurantId, onSave }: { open: boolean; onOpenChange: (v: boolean) => void; product: Product | null; categories: Category[]; restaurantId: string; onSave: (d: Partial<Product>) => Promise<boolean> }) {
+  const [name, setName] = useState(''); const [description, setDescription] = useState(''); const [price, setPrice] = useState(''); const [categoryId, setCategoryId] = useState(''); const [photoUrl, setPhotoUrl] = useState(''); const [available, setAvailable] = useState(true); const [saving, setSaving] = useState(false); const [temporaryPhotoUrls, setTemporaryPhotoUrls] = useState<string[]>([])
+  useEffect(() => { if (product) { setName(product.name); setDescription(product.description || ''); setPrice(String(product.price)); setCategoryId(product.category_id || ''); setPhotoUrl(product.photo_url || ''); setAvailable(product.available) } else { setName(''); setDescription(''); setPrice(''); setCategoryId(''); setPhotoUrl(''); setAvailable(true) }; setTemporaryPhotoUrls([]) }, [product, open])
+  const cleanupTemporaryPhotos = async (keepUrl = '') => { const errors = await Promise.all(temporaryPhotoUrls.filter(url => url !== keepUrl).map(url => removeProductImage(url, restaurantId))); if (errors.some(Boolean)) toast.error('Algumas fotos temporárias não puderam ser removidas.') }
+  const handleOpenChange = async (nextOpen: boolean) => { if (!nextOpen) await cleanupTemporaryPhotos(); onOpenChange(nextOpen) }
+  const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (!name.trim() || !price) return; setSaving(true); const saved = await onSave({ name: name.trim(), description: description.trim() || null, price: parseFloat(price.replace(',', '.')), category_id: categoryId || null, photo_url: photoUrl || null, available, is_combo: false }); if (saved) await cleanupTemporaryPhotos(photoUrl); setSaving(false) }
+  return <Dialog open={open} onOpenChange={nextOpen => { void handleOpenChange(nextOpen) }}><DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>{product ? 'Editar Produto' : 'Novo Produto'}</DialogTitle><DialogDescription>Preencha os dados do produto.</DialogDescription></DialogHeader><form onSubmit={handleSubmit} className="space-y-4"><PhotoUpload value={photoUrl} onChange={setPhotoUrl} onUploaded={url => setTemporaryPhotoUrls(current => [...current, url])} restaurantId={restaurantId} /><div className="space-y-2"><Label>Nome *</Label><Input value={name} onChange={e => setName(e.target.value)} required /></div><div className="space-y-2"><Label>Descrição</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} /></div><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><Label>Preço (R$) *</Label><Input value={price} onChange={e => setPrice(e.target.value)} placeholder="29,90" required /></div><div className="space-y-2"><Label>Categoria</Label><Select value={categoryId} onValueChange={setCategoryId}><SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger><SelectContent><SelectItem value="">Nenhuma</SelectItem>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div></div><div className="flex items-center gap-2"><Switch checked={available} onCheckedChange={setAvailable} /><Label>Disponível para venda</Label></div><DialogFooter><Button type="button" variant="outline" onClick={() => { void handleOpenChange(false) }}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button></DialogFooter></form></DialogContent></Dialog>
 }
 
 function ComboFormDialog({ open, onOpenChange, combo, categories, restaurantId, allProducts, onSaved }: { open: boolean; onOpenChange: (v: boolean) => void; combo: Product | null; categories: Category[]; restaurantId: string; allProducts: Product[]; onSaved: () => void }) {
