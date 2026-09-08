@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
+import { ClientBoundary } from '@/components/ClientBoundary'
 
 export const Route = createFileRoute('/')({
   component: MenuPage,
@@ -7,10 +7,10 @@ export const Route = createFileRoute('/')({
 
 function MenuPage() {
   return (
-    <BlinkClientBoundary fallback={<LoadingShell />}>
+    <ClientBoundary fallback={<LoadingShell />}>
       <PWARegister />
       <MenuShell />
-    </BlinkClientBoundary>
+    </ClientBoundary>
   )
 }
 
@@ -32,7 +32,7 @@ function LoadingShell() {
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Button, Input, Badge } from '@/components/ui/blink-compat'
+import { Button, Input, Badge } from '@/components/ui/app-ui'
 import { Plus, Minus, X, Clock, MapPin, UtensilsCrossed, ChefHat, AlertCircle, ArrowLeft, ShoppingBag } from 'lucide-react'
 
 interface Restaurant { id: string; name: string; slug: string; logo_url: string | null; is_open: boolean }
