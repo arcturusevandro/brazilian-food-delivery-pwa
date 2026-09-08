@@ -41,5 +41,8 @@ jobs:
       - name: Service worker syntax
         run: bun run lint:sw
 
+      - name: Security regression tests
+        run: bun run test
+
       - name: Build
         run: bun run build
