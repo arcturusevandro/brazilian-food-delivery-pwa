@@ -47,6 +47,8 @@ function PhotoUpload({ value, onChange, onUploaded, restaurantId }: { value: str
   const [preview, setPreview] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  useEffect(() => { setPreview(value) }, [value])
+
   const handleFile = async (file: File) => {
     if (file.size > 5 * 1024 * 1024) { toast.error('Imagem muito grande. Máximo 5MB.'); return }
     setPreview(URL.createObjectURL(file))
