@@ -33,7 +33,36 @@ function jsonResponse(
 }
 
 function normalizePrivateKey(value: string): string {
-  return value.replace(/\\n/g, "\n").trim();
+  let normalized = value.trim();
+
+  try {
+    const parsed = JSON.parse(normalized) as unknown;
+
+    if (typeof parsed === "string") {
+      normalized = parsed;
+    } else if (
+      parsed &&
+      typeof parsed === "object" &&
+      "private_key" in parsed &&
+      typeof parsed.private_key === "string"
+    ) {
+      normalized = parsed.private_key;
+    }
+  } catch {
+    // Raw PEM and base64 values are handled below.
+  }
+
+  normalized = normalized.replace(/\\n/g, "\n").trim();
+
+  if (!normalized.includes("-----BEGIN PRIVATE KEY-----")) {
+    try {
+      normalized = atob(normalized).replace(/\\n/g, "\n").trim();
+    } catch {
+      // importPKCS8 returns a safe validation error for unsupported formats.
+    }
+  }
+
+  return normalized;
 }
 
 async function getGoogleAccessToken(
@@ -314,4 +343,3 @@ Deno.serve(async (request: Request) => {
     );
   }
 });
-
