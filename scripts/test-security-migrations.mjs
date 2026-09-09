@@ -33,6 +33,7 @@ test('production security migrations remain versioned', () => {
     'block_anonymous_admin_and_storage_access',
     'optimize_permanent_user_policy_checks',
     'restore_authenticated_owns_restaurant_execute',
+    'maintain_order_updated_at',
   ]
 
   for (const name of required) {
@@ -41,6 +42,15 @@ test('production security migrations remain versioned', () => {
       `Required production migration is missing: ${name}`,
     )
   }
+})
+
+test('order updates maintain their audit timestamp', () => {
+  const sql = migration('maintain_order_updated_at')
+
+  assert.match(sql, /create\s+or\s+replace\s+function\s+public\.set_orders_updated_at\(\)/)
+  assert.match(sql, /new\.updated_at\s*:=\s*now\(\)/)
+  assert.match(sql, /before\s+update\s+on\s+public\.orders/)
+  assert.match(sql, /revoke\s+all[\s\S]*from\s+public\s*,\s*anon\s*,\s*authenticated/)
 })
 
 test('owner helper remains callable only by authenticated application users and service role', () => {

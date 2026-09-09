@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Clock, CheckCircle } from 'lucide-react'
+import { Clock, CheckCircle, Printer } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import toast from 'react-hot-toast'
+import { printOrder, PrinterConfig } from '@/lib/usePrinter'
 
 interface OrderItem {
   id: string
@@ -23,12 +25,24 @@ interface Order {
   customer_name: string
   customer_phone: string
   address: string
+  neighborhood: string | null
   payment_method: string
   status: string
   total: number
+  delivery_fee: number | null
   notes: string | null
   created_at: string
   items?: OrderItem[]
+}
+
+const PRINTER_STORAGE_KEY = 'printer_config'
+
+function loadPrinterConfig(): PrinterConfig {
+  try {
+    const saved = localStorage.getItem(PRINTER_STORAGE_KEY)
+    if (saved) return JSON.parse(saved) as PrinterConfig
+  } catch {}
+  return { connection: 'none', paperWidth: '80mm', autoprint: false }
 }
 
 function formatBRL(value: number): string {
@@ -44,6 +58,37 @@ export function OrderHistory({ restaurantId }: { restaurantId: string }) {
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+
+  const handlePrintOrder = useCallback(async (order: Order) => {
+    const config = loadPrinterConfig()
+    if (config.connection === 'none') {
+      toast.error('Configure uma impressora antes de reimprimir o pedido.')
+      return
+    }
+
+    try {
+      await printOrder({
+        id: order.id,
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        address: order.address,
+        neighborhood: order.neighborhood,
+        payment_method: order.payment_method,
+        notes: order.notes,
+        total: order.total,
+        delivery_fee: order.delivery_fee ?? 0,
+        created_at: order.created_at,
+        items: (order.items ?? []).map(item => ({
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+        })),
+      }, config)
+      toast.success('Pedido reimpresso!')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao reimprimir pedido')
+    }
+  }, [])
 
   const fetchHistory = useCallback(async () => {
     setLoading(true)
@@ -127,6 +172,18 @@ export function OrderHistory({ restaurantId }: { restaurantId: string }) {
                     </ul>
                   </div>
                 )}
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Reimprimir pedido de ${order.customer_name}`}
+                    onClick={() => void handlePrintOrder(order)}
+                  >
+                    <Printer className="mr-2 h-4 w-4" />
+                    Reimprimir
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
