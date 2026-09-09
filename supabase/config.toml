@@ -1,0 +1,8 @@
+project_id = "tnmxsmllorijtomwqxmp"
+
+[functions.register-push-token]
+verify_jwt = false
+
+[functions.send-order-push]
+verify_jwt = false
+
