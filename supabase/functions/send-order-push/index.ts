@@ -35,28 +35,35 @@ function jsonResponse(
 function normalizePrivateKey(value: string): string {
   let normalized = value.trim();
 
-  try {
-    const parsed = JSON.parse(normalized) as unknown;
+  const extractJsonValue = (candidate: string): string => {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
 
-    if (typeof parsed === "string") {
-      normalized = parsed;
-    } else if (
-      parsed &&
-      typeof parsed === "object" &&
-      "private_key" in parsed &&
-      typeof parsed.private_key === "string"
-    ) {
-      normalized = parsed.private_key;
+      if (typeof parsed === "string") return parsed;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "private_key" in parsed &&
+        typeof parsed.private_key === "string"
+      ) {
+        return parsed.private_key;
+      }
+    } catch {
+      // Not JSON; keep the original value.
     }
-  } catch {
-    // Raw PEM and base64 values are handled below.
-  }
+
+    return candidate;
+  };
+
+  normalized = extractJsonValue(normalized);
 
   normalized = normalized.replace(/\\n/g, "\n").trim();
 
   if (!normalized.includes("-----BEGIN PRIVATE KEY-----")) {
     try {
-      normalized = atob(normalized).replace(/\\n/g, "\n").trim();
+      normalized = extractJsonValue(atob(normalized))
+        .replace(/\\n/g, "\n")
+        .trim();
     } catch {
       // importPKCS8 returns a safe validation error for unsupported formats.
     }

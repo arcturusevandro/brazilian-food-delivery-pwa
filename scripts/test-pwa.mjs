@@ -30,7 +30,7 @@ test('notification clicks cannot navigate outside the application origin', () =>
 })
 
 test('Firebase private keys accept common secret storage formats', () => {
-  assert.match(pushSender, /JSON\.parse\(normalized\)/)
+  assert.match(pushSender, /JSON\.parse\(candidate\)/)
   assert.match(pushSender, /parsed\.private_key/)
   assert.match(pushSender, /atob\(normalized\)/)
   assert.match(pushSender, /replace\(\/\\\\n\/g, "\\n"\)/)
