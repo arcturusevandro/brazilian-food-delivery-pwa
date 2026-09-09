@@ -26,6 +26,23 @@ A função auxiliar `public.owns_restaurant(uuid)` é usada pelas políticas RLS
 
 A função `create_order` permanece intencionalmente `SECURITY DEFINER` e executável pelo papel `authenticated`, pois usuários de checkout usam autenticação anônima do Supabase. Qualquer mudança nesse desenho exige novo teste de checkout antes de produção.
 
+## Notificações push
+
+As funções implantadas estão versionadas em `functions/register-push-token` e
+`functions/send-order-push`. O `config.toml` mantém `verify_jwt = false` porque
+cada função possui autenticação própria: sessão Supabase validada no cadastro do
+aparelho e segredo interno do webhook no envio.
+
+Segredos necessários no ambiente das Edge Functions (nunca no Git):
+
+- `ORDER_PUSH_WEBHOOK_SECRET`;
+- `FIREBASE_PROJECT_ID`;
+- `FIREBASE_CLIENT_EMAIL`;
+- `FIREBASE_PRIVATE_KEY`.
+
+O mesmo valor de `ORDER_PUSH_WEBHOOK_SECRET` deve existir no Supabase Vault para
+que o trigger `notify_new_order_push()` possa chamar `send-order-push`.
+
 ## Snapshots históricos
 
 Os arquivos em `audit/2026-09-02/` são evidências da auditoria anterior (`baseline_schema.sql` e `hardening_candidate.sql`). Eles não são migrations ativas e não devem ser reaplicados automaticamente.
