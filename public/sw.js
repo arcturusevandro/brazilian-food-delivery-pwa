@@ -1,21 +1,28 @@
 /* global firebase */
 
-const CACHE_NAME = 'rei-do-hamburguer-v2'
+const CACHE_PREFIX = 'rei-do-hamburguer-'
+const CACHE_NAME = `${CACHE_PREFIX}v3`
 const ASSETS = ['/', '/manifest.json']
 
-importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js')
-importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js')
+let messaging = null
 
-firebase.initializeApp({
-  apiKey: 'AIzaSyAhF6y0cf5CxVh9Dj4ygr5YOlXqvernhp8',
-  authDomain: 'rei-do-hamburguer-b1c21.firebaseapp.com',
-  projectId: 'rei-do-hamburguer-b1c21',
-  storageBucket: 'rei-do-hamburguer-b1c21.firebasestorage.app',
-  messagingSenderId: '730762568251',
-  appId: '1:730762568251:web:a8f6afd7ebb05779b0b21e',
-})
+try {
+  importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js')
+  importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js')
 
-const messaging = firebase.messaging()
+  firebase.initializeApp({
+    apiKey: 'AIzaSyAhF6y0cf5CxVh9Dj4ygr5YOlXqvernhp8',
+    authDomain: 'rei-do-hamburguer-b1c21.firebaseapp.com',
+    projectId: 'rei-do-hamburguer-b1c21',
+    storageBucket: 'rei-do-hamburguer-b1c21.firebasestorage.app',
+    messagingSenderId: '730762568251',
+    appId: '1:730762568251:web:a8f6afd7ebb05779b0b21e',
+  })
+
+  messaging = firebase.messaging()
+} catch (error) {
+  console.error('[SW] Firebase Messaging unavailable:', error)
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)))
@@ -25,7 +32,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .map((key) => caches.delete(key)),
+      ),
     ),
   )
   self.clients.claim()
@@ -35,21 +46,38 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
   if (new URL(event.request.url).origin !== self.location.origin) return
 
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(async (response) => {
+          if (response.ok) {
+            const clone = response.clone()
+            const cache = await caches.open(CACHE_NAME)
+            await cache.put(event.request, clone)
+          }
+          return response
+        })
+        .catch(async () => (await caches.match(event.request)) || caches.match('/')),
+    )
+    return
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetched = fetch(event.request).then((response) => {
-        if (response && response.status === 200) {
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
-        }
-        return response
-      })
-      return cached || fetched
+    caches.match(event.request).then(async (cached) => {
+      if (cached) return cached
+
+      const response = await fetch(event.request)
+      if (response.ok) {
+        const clone = response.clone()
+        const cache = await caches.open(CACHE_NAME)
+        await cache.put(event.request, clone)
+      }
+      return response
     }),
   )
 })
 
-messaging.onBackgroundMessage((payload) => {
+messaging?.onBackgroundMessage((payload) => {
   const data = payload.data || {}
   const title = data.title || payload.notification?.title || '🔔 Novo pedido recebido'
   const body = data.body || payload.notification?.body || 'Um novo pedido está aguardando preparo.'
@@ -75,7 +103,11 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const destinationUrl = event.notification.data?.url || '/admin'
+  const requestedUrl = event.notification.data?.url || '/admin'
+  const destination = new URL(requestedUrl, self.location.origin)
+  const destinationUrl = destination.origin === self.location.origin
+    ? destination.href
+    : new URL('/admin', self.location.origin).href
 
   event.waitUntil(
     self.clients

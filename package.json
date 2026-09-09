@@ -13,7 +13,8 @@
     "lint:sw": "node --check public/sw.js",
     "lint:types": "tsc --noEmit",
     "lint": "bun run lint:types && bun run lint:js && bun run lint:css && bun run lint:sw",
-    "test": "node --test scripts/test-security-migrations.mjs"
+    "test:pwa": "node --test scripts/test-pwa.mjs",
+    "test": "node --test scripts/test-security-migrations.mjs scripts/test-pwa.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
