@@ -10,95 +10,33 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
+import { Route as DemoRouteImport } from './routes/demo'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 
-const RedefinirSenhaRoute = RedefinirSenhaRouteImport.update({
-  id: '/redefinir-senha',
-  path: '/redefinir-senha',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const RedefinirSenhaRoute = RedefinirSenhaRouteImport.update({ id: '/redefinir-senha', path: '/redefinir-senha', getParentRoute: () => rootRouteImport } as any)
+const DemoRoute = DemoRouteImport.update({ id: '/demo', path: '/demo', getParentRoute: () => rootRouteImport } as any)
+const AdminRoute = AdminRouteImport.update({ id: '/admin', path: '/admin', getParentRoute: () => rootRouteImport } as any)
+const IndexRoute = IndexRouteImport.update({ id: '/', path: '/', getParentRoute: () => rootRouteImport } as any)
 
-export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/redefinir-senha': typeof RedefinirSenhaRoute
-}
-export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/redefinir-senha': typeof RedefinirSenhaRoute
-}
-export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/redefinir-senha': typeof RedefinirSenhaRoute
-}
-export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/redefinir-senha'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/redefinir-senha'
-  id: '__root__' | '/' | '/admin' | '/redefinir-senha'
-  fileRoutesById: FileRoutesById
-}
-export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
-  RedefinirSenhaRoute: typeof RedefinirSenhaRoute
-}
+export interface FileRoutesByFullPath { '/': typeof IndexRoute; '/admin': typeof AdminRoute; '/demo': typeof DemoRoute; '/redefinir-senha': typeof RedefinirSenhaRoute }
+export interface FileRoutesByTo { '/': typeof IndexRoute; '/admin': typeof AdminRoute; '/demo': typeof DemoRoute; '/redefinir-senha': typeof RedefinirSenhaRoute }
+export interface FileRoutesById { __root__: typeof rootRouteImport; '/': typeof IndexRoute; '/admin': typeof AdminRoute; '/demo': typeof DemoRoute; '/redefinir-senha': typeof RedefinirSenhaRoute }
+export interface FileRouteTypes { fileRoutesByFullPath: FileRoutesByFullPath; fullPaths: '/' | '/admin' | '/demo' | '/redefinir-senha'; fileRoutesByTo: FileRoutesByTo; to: '/' | '/admin' | '/demo' | '/redefinir-senha'; id: '__root__' | '/' | '/admin' | '/demo' | '/redefinir-senha'; fileRoutesById: FileRoutesById }
+export interface RootRouteChildren { IndexRoute: typeof IndexRoute; AdminRoute: typeof AdminRoute; DemoRoute: typeof DemoRoute; RedefinirSenhaRoute: typeof RedefinirSenhaRoute }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/redefinir-senha': {
-      id: '/redefinir-senha'
-      path: '/redefinir-senha'
-      fullPath: '/redefinir-senha'
-      preLoaderRoute: typeof RedefinirSenhaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+    '/redefinir-senha': { id: '/redefinir-senha'; path: '/redefinir-senha'; fullPath: '/redefinir-senha'; preLoaderRoute: typeof RedefinirSenhaRouteImport; parentRoute: typeof rootRouteImport }
+    '/demo': { id: '/demo'; path: '/demo'; fullPath: '/demo'; preLoaderRoute: typeof DemoRouteImport; parentRoute: typeof rootRouteImport }
+    '/admin': { id: '/admin'; path: '/admin'; fullPath: '/admin'; preLoaderRoute: typeof AdminRouteImport; parentRoute: typeof rootRouteImport }
+    '/': { id: '/'; path: '/'; fullPath: '/'; preLoaderRoute: typeof IndexRouteImport; parentRoute: typeof rootRouteImport }
   }
 }
 
-const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
-  RedefinirSenhaRoute: RedefinirSenhaRoute,
-}
-export const routeTree = rootRouteImport
-  ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+const rootRouteChildren: RootRouteChildren = { IndexRoute, AdminRoute, DemoRoute, RedefinirSenhaRoute }
+export const routeTree = rootRouteImport._addFileChildren(rootRouteChildren)._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
 import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
+declare module '@tanstack/react-start' { interface Register { ssr: true; router: Awaited<ReturnType<typeof getRouter>> } }
