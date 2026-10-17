@@ -13,7 +13,6 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [isSignUp, setIsSignUp] = useState(false)
   const [isRecovering, setIsRecovering] = useState(false)
   const [restaurantName, setRestaurantName] = useState('reidohamburguer')
-  const [inviteCode, setInviteCode] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,35 +39,29 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
       if (isSignUp) {
         if (email.trim().toLowerCase() !== 'alessandra_reis22@hotmail.com.br') {
-          toast.error('Este convite é exclusivo para o e-mail autorizado.')
+          toast.error('O cadastro inicial está autorizado somente para o e-mail informado.')
           return
         }
-        if (password !== '123456') {
-          toast.error('Use a senha temporária informada pelo responsável.')
-          return
-        }
-        if (restaurantName.trim().toLowerCase() !== 'reidohamburguer' || !inviteCode.trim()) {
-          toast.error('Confira o usuário e informe o código de convite.')
+        if (password !== '123456' || restaurantName.trim().toLowerCase() !== 'reidohamburguer') {
+          toast.error('Confira a senha temporária e o nome de usuário.')
           return
         }
 
-        const { error: activationError } = await supabase.functions.invoke('activate-restaurant-admin', {
-          body: {
-            email: email.trim().toLowerCase(),
-            username: restaurantName.trim().toLowerCase(),
-            invite_code: inviteCode.trim(),
-          },
-        })
-        if (activationError) throw activationError
-
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password: '123456',
+          options: {
+            data: { username: 'reidohamburguer', must_change_password: true },
+          },
         })
-        if (signInError) throw signInError
+        if (error) throw error
 
-        toast.success('Acesso ativado. Agora crie sua senha pessoal.')
-        window.location.replace('/redefinir-senha')
+        if (data.session) {
+          toast.success('Conta criada. Agora defina sua senha pessoal.')
+          window.location.replace('/redefinir-senha')
+        } else {
+          toast.success('Verifique o e-mail para confirmar a conta. Depois entre no painel.')
+        }
         return
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -98,13 +91,13 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             RH
           </div>
           <CardTitle className="text-xl">
-            {isRecovering ? 'Redefinir senha' : isSignUp ? 'Criar conta' : 'Entrar'}
+            {isRecovering ? 'Redefinir senha' : isSignUp ? 'Ativar acesso' : 'Entrar'}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             {isRecovering
               ? 'Informe o e-mail cadastrado para receber o link de redefinição.'
               : isSignUp
-                ? 'Ative o acesso ao restaurante existente'
+                ? 'Crie a conta autorizada; o vínculo ao restaurante será feito em seguida'
                 : 'Acesse o painel do seu restaurante'}
           </p>
         </CardHeader>
@@ -151,16 +144,6 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
                   autoComplete="username"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="invite-code">Código de convite</Label>
-                <Input
-                  id="invite-code"
-                  value={inviteCode}
-                  onChange={e => setInviteCode(e.target.value)}
-                  required
-                  autoComplete="off"
-                />
-              </div>
             )}
 
             <Button type="submit" className="w-full" disabled={loading}>
@@ -169,7 +152,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
                 : isRecovering
                   ? 'Enviar link de redefinição'
                   : isSignUp
-                    ? 'Ativar acesso'
+                    ? 'Criar conta autorizada'
                     : 'Entrar'}
             </Button>
           </form>
