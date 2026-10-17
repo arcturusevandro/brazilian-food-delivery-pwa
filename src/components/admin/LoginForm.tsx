@@ -4,17 +4,16 @@ import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabase'
-import { useRestaurant } from '@/hooks/useRestaurant'
 import toast from 'react-hot-toast'
 
 export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState('123456')
   const [loading, setLoading] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
   const [isRecovering, setIsRecovering] = useState(false)
-  const [restaurantName, setRestaurantName] = useState('')
-  const { createRestaurant } = useRestaurant()
+  const [restaurantName, setRestaurantName] = useState('reidohamburguer')
+  const [inviteCode, setInviteCode] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,28 +39,47 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       }
 
       if (isSignUp) {
-        if (!restaurantName.trim()) {
-          toast.error('Digite o nome do seu restaurante')
+        if (email.trim().toLowerCase() !== 'alessandra_reis22@hotmail.com.br') {
+          toast.error('Este convite é exclusivo para o e-mail autorizado.')
+          return
+        }
+        if (password !== '123456') {
+          toast.error('Use a senha temporária informada pelo responsável.')
+          return
+        }
+        if (restaurantName.trim().toLowerCase() !== 'reidohamburguer' || !inviteCode.trim()) {
+          toast.error('Confira o usuário e informe o código de convite.')
           return
         }
 
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim().toLowerCase(),
-          password,
+        const { error: activationError } = await supabase.functions.invoke('activate-restaurant-admin', {
+          body: {
+            email: email.trim().toLowerCase(),
+            username: restaurantName.trim().toLowerCase(),
+            invite_code: inviteCode.trim(),
+          },
         })
-        if (error) throw error
+        if (activationError) throw activationError
 
-        if (data.user) {
-          await createRestaurant(data.user, restaurantName.trim())
-          toast.success('Conta criada com sucesso!')
-          onSuccess()
-        }
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password: '123456',
+        })
+        if (signInError) throw signInError
+
+        toast.success('Acesso ativado. Agora crie sua senha pessoal.')
+        window.location.replace('/redefinir-senha')
+        return
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim().toLowerCase(),
           password,
         })
         if (error) throw error
+        if (data.user?.user_metadata?.must_change_password) {
+          window.location.replace('/redefinir-senha')
+          return
+        }
         toast.success('Login realizado com sucesso!')
         onSuccess()
       }
@@ -86,7 +104,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             {isRecovering
               ? 'Informe o e-mail cadastrado para receber o link de redefinição.'
               : isSignUp
-                ? 'Cadastre seu restaurante'
+                ? 'Ative o acesso ao restaurante existente'
                 : 'Acesse o painel do seu restaurante'}
           </p>
         </CardHeader>
@@ -108,11 +126,11 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
             {!isRecovering && (
               <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
+                <Label htmlFor="password">{isSignUp ? 'Senha temporária' : 'Senha'}</Label>
                 <Input
                   id="password"
                   type="password"
-                  placeholder="••••••••"
+                  placeholder={isSignUp ? '123456 (temporária)' : '••••••••'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
@@ -124,13 +142,23 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
             {isSignUp && !isRecovering && (
               <div className="space-y-2">
-                <Label htmlFor="restaurant">Nome do restaurante</Label>
+                <Label htmlFor="restaurant">Nome de usuário</Label>
                 <Input
                   id="restaurant"
-                  placeholder="Ex.: Rei do Hambúrguer"
                   value={restaurantName}
                   onChange={e => setRestaurantName(e.target.value)}
                   required
+                  autoComplete="username"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="invite-code">Código de convite</Label>
+                <Input
+                  id="invite-code"
+                  value={inviteCode}
+                  onChange={e => setInviteCode(e.target.value)}
+                  required
+                  autoComplete="off"
                 />
               </div>
             )}
@@ -141,7 +169,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
                 : isRecovering
                   ? 'Enviar link de redefinição'
                   : isSignUp
-                    ? 'Criar conta'
+                    ? 'Ativar acesso'
                     : 'Entrar'}
             </Button>
           </form>
@@ -181,13 +209,13 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
           {!isRecovering && (
             <p className="mt-4 text-center text-sm text-muted-foreground">
-              {isSignUp ? 'Já tem conta?' : 'Não tem conta?'}{' '}
+              {isSignUp ? 'Já tem acesso?' : 'Recebeu um convite?'}{' '}
               <button
                 type="button"
                 className="font-medium text-primary hover:underline"
                 onClick={() => setIsSignUp(!isSignUp)}
               >
-                {isSignUp ? 'Entrar' : 'Criar uma'}
+                {isSignUp ? 'Entrar' : 'Ativar acesso'}
               </button>
             </p>
           )}
