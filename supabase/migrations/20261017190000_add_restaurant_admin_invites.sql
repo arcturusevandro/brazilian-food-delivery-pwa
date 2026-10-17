@@ -99,7 +99,7 @@ begin
 
   select i.* into v_invite
   from public.restaurant_admin_invites i
-  where i.token_hash = encode(digest(p_code, 'sha256'), 'hex')
+  where i.token_hash = encode(public.digest(p_code, 'sha256'), 'hex')
     and lower(i.email) = v_email
     and i.used_at is null
     and i.expires_at > now()
