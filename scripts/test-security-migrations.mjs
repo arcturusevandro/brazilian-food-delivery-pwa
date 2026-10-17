@@ -35,6 +35,7 @@ test('production security migrations remain versioned', () => {
     'restore_authenticated_owns_restaurant_execute',
     'maintain_order_updated_at',
     'add_order_rate_limit',
+    'harden_order_rate_limit_concurrency',
   ]
 
   for (const name of required) {
@@ -145,4 +146,21 @@ test('all exposed application tables have an RLS enable statement in history', (
       `No RLS enable statement found for ${table}`,
     )
   }
+})
+
+
+
+test('order rate limiting serializes requests and normalizes phone numbers', () => {
+  const sql = migration('harden_order_rate_limit_concurrency')
+
+  assert.match(sql, /create\s+index\s+if\s+not\s+exists\s+orders_phone_digits_created_idx/)
+  assert.match(sql, /pg_catalog\.pg_advisory_xact_lock/)
+  assert.match(sql, /pg_catalog\.hashtextextended/)
+  assert.match(sql, /regexp_replace\(coalesce\(new\.customer_phone/)
+  assert.match(sql, /char_length\(v_phone_digits\)\s*<\s*8/)
+  assert.match(sql, /char_length\(v_phone_digits\)\s*>\s*15/)
+  assert.match(sql, /customer_phone[\s\S]*interval\s+'10 minutes'[\s\S]*\)\s*>=\s*3/)
+  assert.match(sql, /restaurant_id[\s\S]*interval\s+'10 minutes'[\s\S]*\)\s*>=\s*30/)
+  assert.match(sql, /revoke\s+all[\s\S]*from\s+public\s*,\s*anon\s*,\s*authenticated/)
+  assert.ok(sql.indexOf('order-phone:') < sql.indexOf('order-restaurant:'), 'advisory locks must be acquired in a consistent order')
 })
