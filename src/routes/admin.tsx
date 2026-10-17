@@ -43,26 +43,22 @@ function AdminSkeleton() {
 }
 
 function CreateRestaurantForm({ onCreated }: { onCreated: () => void }) {
-  const [name, setName] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [loading, setLoading] = useState(false)
-  const { createRestaurant } = useRestaurant()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!inviteCode.trim()) return
     setLoading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) throw new Error('Sessão inválida')
-      const result = await createRestaurant(session.user, name.trim())
-      if (result) {
-        toast.success('Restaurante criado com sucesso!')
-        onCreated()
-      } else {
-        toast.error('Erro ao criar restaurante. Tente novamente.')
-      }
+      if (!session?.user) throw new Error('Entre na sua conta primeiro.')
+      const { error } = await supabase.rpc('claim_restaurant_invite', { p_code: inviteCode.trim() })
+      if (error) throw error
+      toast.success('Acesso vinculado ao Rei do Hambúrguer!')
+      onCreated()
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao criar restaurante')
+      toast.error(err.message || 'Não foi possível vincular o acesso.')
     } finally {
       setLoading(false)
     }
@@ -73,19 +69,25 @@ function CreateRestaurantForm({ onCreated }: { onCreated: () => void }) {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-bold">
-            SE
+            RH
           </div>
-          <CardTitle className="text-xl">Criar seu Restaurante</CardTitle>
-          <p className="text-sm text-muted-foreground">Dê um nome ao seu restaurante para começar</p>
+          <CardTitle className="text-xl">Vincular acesso ao Rei do Hambúrguer</CardTitle>
+          <p className="text-sm text-muted-foreground">Digite o código de convite fornecido pelo responsável para acessar o restaurante existente.</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="restaurant-name">Nome do Restaurante</Label>
-              <Input id="restaurant-name" placeholder="Ex: Rei do Hamburguer" value={name} onChange={e => setName(e.target.value)} required autoFocus />
+              <Label htmlFor="invite-code">Código de convite</Label>
+              <Input
+                id="invite-code"
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value)}
+                required
+                autoComplete="off"
+              />
             </div>
-            <Button type="submit" className="w-full" disabled={loading || !name.trim()}>
-              {loading ? 'Criando...' : 'Criar Restaurante'}
+            <Button type="submit" className="w-full" disabled={loading || !inviteCode.trim()}>
+              {loading ? 'Vinculando...' : 'Ativar acesso'}
             </Button>
           </form>
         </CardContent>
@@ -105,6 +107,9 @@ function AdminContent() {
       if (session?.user?.is_anonymous) {
         await supabase.auth.signOut()
         setSession(null)
+      } else if (session?.user?.user_metadata?.must_change_password) {
+        window.location.replace('/redefinir-senha')
+        setSession(session)
       } else {
         setSession(session)
       }
@@ -114,6 +119,9 @@ function AdminContent() {
       if (s?.user?.is_anonymous) {
         await supabase.auth.signOut()
         setSession(null)
+      } else if (s?.user?.user_metadata?.must_change_password) {
+        window.location.replace('/redefinir-senha')
+        setSession(s)
       } else {
         setSession(s)
       }

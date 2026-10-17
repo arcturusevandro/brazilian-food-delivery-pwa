@@ -4,17 +4,15 @@ import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabase'
-import { useRestaurant } from '@/hooks/useRestaurant'
 import toast from 'react-hot-toast'
 
 export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState('123456')
   const [loading, setLoading] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
   const [isRecovering, setIsRecovering] = useState(false)
-  const [restaurantName, setRestaurantName] = useState('')
-  const { createRestaurant } = useRestaurant()
+  const [restaurantName, setRestaurantName] = useState('reidohamburguer')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,28 +38,41 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       }
 
       if (isSignUp) {
-        if (!restaurantName.trim()) {
-          toast.error('Digite o nome do seu restaurante')
+        if (email.trim().toLowerCase() !== 'alessandra_reis22@hotmail.com.br') {
+          toast.error('O cadastro inicial está autorizado somente para o e-mail informado.')
+          return
+        }
+        if (password !== '123456' || restaurantName.trim().toLowerCase() !== 'reidohamburguer') {
+          toast.error('Confira a senha temporária e o nome de usuário.')
           return
         }
 
         const { data, error } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
-          password,
+          password: '123456',
+          options: {
+            data: { username: 'reidohamburguer', must_change_password: true },
+          },
         })
         if (error) throw error
 
-        if (data.user) {
-          await createRestaurant(data.user, restaurantName.trim())
-          toast.success('Conta criada com sucesso!')
-          onSuccess()
+        if (data.session) {
+          toast.success('Conta criada. Agora defina sua senha pessoal.')
+          window.location.replace('/redefinir-senha')
+        } else {
+          toast.success('Verifique o e-mail para confirmar a conta. Depois entre no painel.')
         }
+        return
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim().toLowerCase(),
           password,
         })
         if (error) throw error
+        if (data.user?.user_metadata?.must_change_password) {
+          window.location.replace('/redefinir-senha')
+          return
+        }
         toast.success('Login realizado com sucesso!')
         onSuccess()
       }
@@ -80,13 +91,13 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             RH
           </div>
           <CardTitle className="text-xl">
-            {isRecovering ? 'Redefinir senha' : isSignUp ? 'Criar conta' : 'Entrar'}
+            {isRecovering ? 'Redefinir senha' : isSignUp ? 'Ativar acesso' : 'Entrar'}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             {isRecovering
               ? 'Informe o e-mail cadastrado para receber o link de redefinição.'
               : isSignUp
-                ? 'Cadastre seu restaurante'
+                ? 'Crie a conta autorizada; o vínculo ao restaurante será feito em seguida'
                 : 'Acesse o painel do seu restaurante'}
           </p>
         </CardHeader>
@@ -108,11 +119,11 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
             {!isRecovering && (
               <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
+                <Label htmlFor="password">{isSignUp ? 'Senha temporária' : 'Senha'}</Label>
                 <Input
                   id="password"
                   type="password"
-                  placeholder="••••••••"
+                  placeholder={isSignUp ? '123456 (temporária)' : '••••••••'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
@@ -124,13 +135,13 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
             {isSignUp && !isRecovering && (
               <div className="space-y-2">
-                <Label htmlFor="restaurant">Nome do restaurante</Label>
+                <Label htmlFor="restaurant">Nome de usuário</Label>
                 <Input
                   id="restaurant"
-                  placeholder="Ex.: Rei do Hambúrguer"
                   value={restaurantName}
                   onChange={e => setRestaurantName(e.target.value)}
                   required
+                  autoComplete="username"
                 />
               </div>
             )}
@@ -141,7 +152,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
                 : isRecovering
                   ? 'Enviar link de redefinição'
                   : isSignUp
-                    ? 'Criar conta'
+                    ? 'Criar conta autorizada'
                     : 'Entrar'}
             </Button>
           </form>
@@ -181,13 +192,13 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
           {!isRecovering && (
             <p className="mt-4 text-center text-sm text-muted-foreground">
-              {isSignUp ? 'Já tem conta?' : 'Não tem conta?'}{' '}
+              {isSignUp ? 'Já tem acesso?' : 'Recebeu um convite?'}{' '}
               <button
                 type="button"
                 className="font-medium text-primary hover:underline"
                 onClick={() => setIsSignUp(!isSignUp)}
               >
-                {isSignUp ? 'Entrar' : 'Criar uma'}
+                {isSignUp ? 'Entrar' : 'Ativar acesso'}
               </button>
             </p>
           )}

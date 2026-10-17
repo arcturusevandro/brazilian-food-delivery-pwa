@@ -60,7 +60,7 @@ function ResetPasswordPage() {
     setLoading(true)
 
     try {
-      const { error } = await supabase.auth.updateUser({ password })
+      const { error } = await supabase.auth.updateUser({ password, data: { must_change_password: false } })
       if (error) throw error
 
       toast.success('Senha redefinida com sucesso!')
