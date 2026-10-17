@@ -105,6 +105,9 @@ function AdminContent() {
       if (session?.user?.is_anonymous) {
         await supabase.auth.signOut()
         setSession(null)
+      } else if (session?.user?.user_metadata?.must_change_password) {
+        window.location.replace('/redefinir-senha')
+        setSession(session)
       } else {
         setSession(session)
       }
@@ -114,6 +117,9 @@ function AdminContent() {
       if (s?.user?.is_anonymous) {
         await supabase.auth.signOut()
         setSession(null)
+      } else if (s?.user?.user_metadata?.must_change_password) {
+        window.location.replace('/redefinir-senha')
+        setSession(s)
       } else {
         setSession(s)
       }
