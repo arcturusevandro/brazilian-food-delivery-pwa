@@ -24,10 +24,25 @@ export function useRestaurant() {
     setLoading(true)
     setError(null)
 
+    const { data: restaurantId, error: idError } = await supabase.rpc('get_my_restaurant_id')
+
+    if (idError) {
+      setError(idError.message)
+      setRestaurant(null)
+      setLoading(false)
+      return
+    }
+
+    if (!restaurantId) {
+      setRestaurant(null)
+      setLoading(false)
+      return
+    }
+
     const { data, error: fetchError } = await supabase
       .from('restaurants')
       .select('*')
-      .eq('owner_id', user.id)
+      .eq('id', restaurantId)
       .maybeSingle()
 
     if (fetchError) {
