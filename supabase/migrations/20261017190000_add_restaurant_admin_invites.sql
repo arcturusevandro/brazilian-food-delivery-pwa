@@ -77,3 +77,49 @@ with check (
   coalesce(((select auth.jwt()) ->> 'is_anonymous')::boolean, false) is false
   and public.owns_restaurant(id)
 );
+
+create or replace function public.claim_restaurant_invite(p_code text)
+returns uuid
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+declare
+  v_user_id uuid := auth.uid();
+  v_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  v_invite public.restaurant_admin_invites%rowtype;
+begin
+  if v_user_id is null then
+    raise exception 'É necessário entrar na conta primeiro.';
+  end if;
+
+  if length(coalesce(p_code, '')) < 32 or length(p_code) > 128 then
+    raise exception 'Código de convite inválido.';
+  end if;
+
+  select i.* into v_invite
+  from public.restaurant_admin_invites i
+  where i.token_hash = encode(digest(p_code, 'sha256'), 'hex')
+    and lower(i.email) = v_email
+    and i.used_at is null
+    and i.expires_at > now()
+  for update;
+
+  if not found then
+    raise exception 'Convite inválido, expirado ou já utilizado.';
+  end if;
+
+  update public.restaurant_admin_invites
+  set used_at = now()
+  where id = v_invite.id;
+
+  insert into public.restaurant_memberships (restaurant_id, user_id, role)
+  values (v_invite.restaurant_id, v_user_id, 'admin')
+  on conflict (restaurant_id, user_id) do nothing;
+
+  return v_invite.restaurant_id;
+end;
+$function$;
+
+revoke all on function public.claim_restaurant_invite(text) from public, anon;
+grant execute on function public.claim_restaurant_invite(text) to authenticated;
